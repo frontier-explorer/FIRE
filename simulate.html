@@ -911,6 +911,7 @@
 
                     //銘柄をクリックすると、イベントが発動するようにする。	追加開始
                     th1.classList.add('meigara-header-group');
+		    th1.classList.add('collapsed-detail-text');
                     th1.dataset.meigaraIndex = index; // 0, 1, 2, ... のインデックス
                     //銘柄をクリックすると、イベントが発動するようにする。	追加終了
 
@@ -919,18 +920,22 @@
                     // 2行目: 詳細項目 (4つのセル)
                     const th2_rate = document.createElement('th');
                     th2_rate.textContent = '利率％';
+		    th2_rate.classList.add('collapsed-detail-text');
                     headerRow2.appendChild(th2_rate);
 
                     const th2_value = document.createElement('th');
                     th2_value.textContent = '資産額';
+		    th2_value.classList.add('collapsed-detail-text');
                     headerRow2.appendChild(th2_value);
 
                     const th2_kuchisu = document.createElement('th');
                     th2_kuchisu.textContent = '保有口数';
+		    th2_kuchisu.classList.add('collapsed-detail-text');
                     headerRow2.appendChild(th2_kuchisu);
 
                     const th2_price = document.createElement('th');
                     th2_price.innerHTML = '現在/<br>平均<br>(税額/1口)';
+		    th2_price.classList.add('collapsed-detail-text');
                     headerRow2.appendChild(th2_price);
                 });
 
@@ -1010,12 +1015,12 @@
 
                         const priceCell = `${priceLine}<br>${taxPerUnitText}`;
 
-                        // セルを追加
+                        // 銘柄の詳細情報のセルを追加
                         rowHtml += `
-                            <td>${stock.rate.toFixed(2)}%</td>
-                            <td>${window.formatNumber(stock.value)}</td>
-                            <td>${kuchisuCell}</td>
-                            <td>${priceCell}</td>
+                            <td class='collapsed-detail-text'>${stock.rate.toFixed(2)}%</td>
+                            <td class='collapsed-detail-text'>${window.formatNumber(stock.value)}</td>
+                            <td class='collapsed-detail-text'>${kuchisuCell}</td>
+                            <td class='collapsed-detail-text'>${priceCell}</td>
                         `;
                     });
 
