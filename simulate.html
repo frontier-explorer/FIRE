@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FIREシミュレーション</title>
     <style>
-        /* 4.4. デザイン - ブラウザサイズまで広げ、収まらないときは垂直・水平スライダーで表示 */
+        /* デザイン - ブラウザサイズまで広げ、収まらないときは垂直・水平スライダーで表示 */
         body {
             max-width: none !important;
             margin: 0;
@@ -67,18 +67,6 @@
         .simulation-button:hover {
             opacity: 0.8;
         }
-
-        .active-chart-button {
-            /* グラフが表示されているボタンのスタイル */
-            box-shadow: 0 0 5px 3px #f39c12; /* オレンジ色のハイライト */
-            border: 2px solid #e67e22;
-        }
-
-        /* グラフコンテナにダブルクリックを促すカーソルを追加（任意） */
-        #totalAssetChart {
-            cursor: pointer;
-        }
-
 
         /* 4.3. シミュレーション詳細テーブルのデザイン */
         #detail-table-container {
@@ -180,29 +168,9 @@
             /* クリック可能であることを示す */
             color: initial;
         }
-
-        .meigara-header-group.collapsed {
-            background-color: #fce7e4;
-            /* 縮小中であることを視覚的に示す */
-            width: 60px !important;
-            min-width: 60px !important;
-            max-width: 60px !important;
-            padding: 0 5px !important;
-            /* 銘柄名が視認できる程度のパディングを残す */
-            white-space: nowrap;
-            /* テキストが折り返されないようにする */
-            overflow: hidden;
-            text-overflow: ellipsis;
-            /* 必要に応じて、銘柄名を省略記号で表示 */
-        }
-
         .collapsed-detail-text {
-            /* 最小フォントサイズに設定 (視認不可) */
-            font-size: 1px !important;
-            /* 文字色を透明にしたい場合は color: transparent も追加できますが、最小サイズで十分です */
-            color: transparent !important;
+		display: none;
         }
-
 
         .kuchisu-increase {
             font-weight: bold;
@@ -260,11 +228,6 @@
 
     <main>
         <section id="results-summary">
-
-        <div id="dynamic-chart-container" style="display: none; width: 95%; margin: 20px auto; min-height: 350px;">
-            <canvas id="totalAssetChart"></canvas>
-        </div>
-
             <h2>シミュレーション結果の概要</h2>
             <div class="result-stats">
                 <p id="summary-text">データ読み込み中...</p>
@@ -282,6 +245,10 @@
 
         <section id="simulation-detail" style="display: none;">
             <h2 id="detail-title" style="text-align: left;">シミュレーション詳細（試行 #1）</h2>
+
+            <div id="chart-container" style="width: 95%; margin: 30px auto; min-height: 350px;">
+                <canvas id="totalAssetChart"></canvas>
+            </div>
 
             <div id="meigara-legend">
                 <h3>凡例</h3>
@@ -717,7 +684,6 @@
                 L = numeric.cholesky(R);
             } catch (error) {
                 debugOutput('エラー: コレスキー分解に失敗しました。' + error.message);
-		alert('エラー: コレスキー分解に失敗しました。\n\n設定された相関係数に「数学的な矛盾（一貫性の欠如）」が生じている場合に発生します。\n\n相関係数の設定が論理的に一貫しているか (例: 複数の銘柄間で相関係数が矛盾していないか) ご確認ください。\nたくさんあると、難しいですよね😅' + error.message);
                 return [];
             }
             debugOutput('コレスキー分解完了。');
@@ -898,7 +864,6 @@
 
         //チャート生成用
         let totalAssetChartInstance = null;
-	let currentActiveButton = null;
 
         // ... (DOM操作と表示制御のコードは変更なし) ...
         document.addEventListener('DOMContentLoaded', () => {
@@ -911,11 +876,6 @@
             const meigaraLegend = document.getElementById('meigara-legend');
             const headerRow1 = document.getElementById('header-row-1');
             const headerRow2 = document.getElementById('header-row-2');
-
-		//グラフの領域
-	    const dynamicChartContainer = document.getElementById('dynamic-chart-container');
-	    const totalAssetChart = document.getElementById('totalAssetChart');
-
 
             let simulationResults = [];
             let currentTrialIndex = -1;
@@ -949,10 +909,10 @@
                     th1.colSpan = "4";
                     th1.textContent = `銘柄${String.fromCharCode(65 + index)}`
 
-                    //銘柄ヘッダをクリックすると、イベントが発動するようにする。	追加開始
+                    //銘柄をクリックすると、イベントが発動するようにする。	追加開始
                     th1.classList.add('meigara-header-group');
                     th1.dataset.meigaraIndex = index; // 0, 1, 2, ... のインデックス
-                    //銘柄ヘッダをクリックすると、イベントが発動するようにする。	追加終了
+                    //銘柄をクリックすると、イベントが発動するようにする。	追加終了
 
                     headerRow1.appendChild(th1);
 
@@ -983,17 +943,16 @@
                 // 凡例の設定
                 const legendHtml = '<h3>凡例</h3>';
                 meigaraLegend.innerHTML = legendHtml + stocks.map((s, i) =>
-                    `銘柄${String.fromCharCode(65 + i)}: ${s.Meigara}`
-                ).join('<br>') + '<BR><BR>※　テーブルの銘柄A、銘柄B・・・をクリックすると、幅を縮めたり広げたりできます。<br>';
+                    '<button onclick="showHideStocksInfo(' + `${i}` + ')">' + `銘柄${String.fromCharCode(65 + i)}: ${s.Meigara}` + '</button>'
+                ).join('<br>') + '<BR><BR>※　凡例の「銘柄A、銘柄B・・・」をクリックすると、各銘柄の推移の表示・非表示を切り替えられます。<br>';
             }
 
 
             /**
              * シミュレーション詳細テーブルに結果を表示
              * @param {number} trialIndex - 表示する試行のインデックス
-             * @param {HTMLElement} clickedButton - クリックされたボタン要素 ← ★★★ この行を追加 ★★★
              */
-            function displaySimulationDetail(trialIndex, clickedButton) {
+            function displaySimulationDetail(trialIndex) {
                 currentTrialIndex = trialIndex;
                 const result = simulationResults[trialIndex];
                 const history = result.history;
@@ -1067,16 +1026,11 @@
                 detailSection.style.display = 'block';
 
 
-		// --- グラフ表示位置の動的変更 ---
-		// クリックされたボタンの直後にグラフコンテナを移動
-		clickedButton.after(dynamicChartContainer);
-		dynamicChartContainer.style.display = 'block';	 // グラフを表示
-
                 //グラフ描画ロジックの追加
                 const labels = history.map(entry => entry.yearMonth);
                 const data = history.map(entry => entry.totalAsset);
 
-                 const ctx = totalAssetChart.getContext('2d'); // totalAssetChart を使用
+                const ctx = document.getElementById('totalAssetChart').getContext('2d');
 
                 // 既存のグラフがあれば破棄して新しい描画に備える
                 if (totalAssetChartInstance) {
@@ -1088,33 +1042,16 @@
                     type: 'line',
                     data: {
                         labels: labels,
-                        datasets: [
-                            // 1. 総資産の推移 (リニア軸 - 左)
-                            {
-                                label: '(9) 総資産の推移 (リニア)',
-                                data: data,
-                                borderColor: result.success ? '#3498db' : '#e74c3c', // 成功:青, 失敗:赤
-                                backgroundColor: result.success ? 'rgba(52, 152, 219, 0.1)' : 'rgba(231, 76, 60, 0.1)',
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                tension: 0.1,
-                                fill: true,
-                                yAxisID: 'y' // 左側のリニア軸を使用
-                            },
-                            // 2. 総資産の推移 (対数軸 - 右)
-                            {
-                                label: '(9) 総資産の推移 (対数)',
-                                data: data,
-                                borderColor: '#2ecc71', // 緑色に変更
-                                backgroundColor: 'transparent', // 塗りつぶしなし
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                tension: 0.1,
-                                fill: false, // 塗りつぶしなし
-                                yAxisID: 'y1', // 新しい対数軸を使用
-                                borderDash: [5, 5] // 破線にするなどして区別しやすくする
-                            }
-                        ]
+                        datasets: [{
+                            label: '(9) 総資産の推移',
+                            data: data,
+                            borderColor: result.success ? '#3498db' : '#e74c3c', // 成功:青, 失敗:赤
+                            backgroundColor: result.success ? 'rgba(52, 152, 219, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: true
+                        }]
                     },
                     options: {
                         responsive: true,
@@ -1125,8 +1062,7 @@
                                 text: `試行 #${result.trialId} の総資産の推移 (${result.success ? '成功' : '失敗'})`
                             },
                             legend: {
-                                display: true, // 凡例を表示して2つのグラフを区別
-                                position: 'top',
+                                display: false
                             }
                         },
                         scales: {
@@ -1140,13 +1076,10 @@
                                     maxTicksLimit: 20
                                 }
                             },
-                            // 左側のY軸 (リニア)
                             y: {
-                                type: 'linear', // 明示的にリニアを設定
-                                position: 'left', // 左側に配置
                                 title: {
                                     display: true,
-                                    text: '総資産額 (リニアスケール)'
+                                    text: '総資産額'
                                 },
                                 beginAtZero: false,
                                 ticks: {
@@ -1155,55 +1088,14 @@
                                         return window.formatNumber(value);
                                     }
                                 }
-                            },
-                            // 右側のY軸 (対数)
-                            y1: {
-                                type: 'logarithmic', // 対数スケールを設定
-                                position: 'right', // 右側に配置
-                                title: {
-                                    display: true,
-                                    text: '総資産額 (対数スケール)'
-                                },
-                                grid: {
-                                    drawOnChartArea: false, // グラフ領域に線を引かない
-                                },
-                                ticks: {
-                                    callback: function (value) {
-                                        // 対数軸は目盛りの値を整形するのに特別な処理が必要な場合がある
-                                        if (value >= 10000000000) return window.formatNumber(value / 10000000000) + '兆';
-                                        if (value >= 100000000) return window.formatNumber(value / 100000000) + '億';
-                                        if (value >= 10000) return window.formatNumber(value / 10000) + '万';
-                                        return window.formatNumber(value);
-                                    }
-                                }
                             }
                         }
                     }
                 });
 
-		// --- グラフのダブルクリックイベントの設定 ---
-		totalAssetChart.ondblclick = () => {
-			hideChart(); // 新しい非表示関数を呼び出す
-		};
-		currentActiveButton = clickedButton; // 最後にアクティブになったボタンを記憶
-
             }
 
-	/**
-	 * グラフを非表示にする関数
-	 */
-	function hideChart() {
-		if (totalAssetChartInstance) {
-			totalAssetChartInstance.destroy();
-			totalAssetChartInstance = null;
-		}
-		dynamicChartContainer.style.display = 'none'; // グラフコンテナを非表示
-		// 最後にクリックされたボタンのハイライトを解除したい場合はここで処理
-		if (currentActiveButton) {
-			currentActiveButton.classList.remove('active-chart-button');
-			currentActiveButton = null;
-		}
-	}
+
 
             /**
              * シミュレーションボタンの表示を更新
@@ -1221,19 +1113,8 @@
                     button.textContent = result.trialId;
 
                     button.addEventListener('click', () => {
-				// 同じボタンがクリックされたら非表示にする
-				if (currentActiveButton === event.currentTarget) {
-					hideChart();
-					return;
-				}
-				// 既にアクティブなボタンがあれば、そのハイライトを解除
-				if (currentActiveButton) {
-					currentActiveButton.classList.remove('active-chart-button');
-				}
-				// 新しくクリックされたボタンをアクティブにし、詳細を表示
-				event.currentTarget.classList.add('active-chart-button');
-				displaySimulationDetail(index, event.currentTarget); // クリックされたボタンを渡す
-			});
+                        displaySimulationDetail(index);
+                    });
 
                     simulationButtonsDiv.appendChild(button);
                 });
@@ -1365,42 +1246,24 @@
             function generateOverallAssessment(successRate, worst10thAsset) {
                 let assessment = "";
 
-                if (successRate >= 99) {
-                    stars = '⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐';
-                    comment = `【評価：FIREしちゃいますか！】もうFIREせずに後悔する人生のほうがリスクかもしれません。
-				<br>資産が枯渇したら運がなかったと諦められるレベルです。
-				<br>会社員のうちにクレジットカードの作成、住宅ローンの利用等、ＦＩＲＥ後では審査が通らないものを済ませておくのも忘れずに。`;
-                } else if (successRate >= 95) {
-                    stars = '⭐⭐⭐⭐⭐';
-                    comment = `【評価：極めて高い確実性】あなたのFIRE計画は極めて高い確実性を持っています。
-				<br>資産が枯渇する確率は非常に低いです。
-				<br>ただし、突然の大きな出費、急激な物価高、市場の長期間停滞などの複数の危機が重なる「パーフェクトストーム」のような事態が連続すれば、最悪のシナリオでは枯渇する可能性も残ります。
-				<BR>計画は優秀な領域ですが、日本では正社員を辞めるという行為は取り返しがつかないため、常に市場を注視する姿勢は崩すべきではありません。`;
+                if (successRate >= 95) {
+                    stars = '★★★★★';
+                    comment = `【評価：極めて高い確実性】成功率 ${successRate.toFixed(1)} で、あなたのFIRE計画は極めて高い確実性を持っています。資産が枯渇する確率は非常に低いですが、**さらなる特異な出費や、一時的な自国通貨安、または複数の危機が重なる「パーフェクトストーム」のような事態が連続すれば、最悪のシナリオでは枯渇する可能性も残ります。**この計画は優秀ですが、正社員を辞めるという行為は取り返しがつかないため、常に市場を注視する姿勢は崩すべきではありません。`;
                 } else if (successRate >= 90) {
-                    stars = '⭐⭐⭐⭐☆';
-                    comment = `【評価：高い確実性だがリスクあり】一般的な基準では高い確実性です。
-				<BR>${(100 - successRate).toFixed(1)}%の確率で資産が尽きる未来が示されています。
-				<BR>予期せぬ大きな出費や、市場が長期間停滞する「パーフェクトストーム」のような事態が重なった場合、資産は枯渇します。
-				<BR>このリスクを真剣に受け止め、万が一の場合の収入源を確保するなど、より厳しい検討が必要です。`;
+                    stars = '★★★★☆';
+                    comment = `【評価：高い確実性だがリスクあり】成功率 ${successRate.toFixed(1)} は、一般的な基準では高い確実性です。しかし、FIREは取り返しのつかない決断であり、${(100 - successRate).toFixed(1)}%の確率で資産が尽きる未来が示されています。**予期せぬ大きな出費や、市場が長期間停滞する「パーフェクトストーム」のような事態が重なった場合、資産は枯渇します。**このリスクを真剣に受け止め、万が一の場合の収入源を確保するなど、より厳しい検討が必要です。`;
                 } else if (successRate >= 80) {
-                    stars = '⭐⭐⭐☆☆';
-                    comment = `【評価：危険水域・十分な検討が必要】FIREの確実性としては不十分です。
-					<BR>成功と失敗が約20%の差で発生しており、資産が枯渇する可能性は十分に発生する領域です。
-					<BR>特異な出費や、一時的な自国通貨安、またはインフレの予想以上の進行が重なる最悪のケースでは、計画は容易に破綻します。
-					<BR>計画を実行に移す前に、資産の増強や生活費の見直しを強く推奨します。`;
+                    stars = '★★★☆☆';
+                    comment = `【評価：危険水域・十分な検討が必要】成功率 ${successRate.toFixed(1)} は、FIREの確実性としては不十分です。成功と失敗が約20%の差で発生しており、資産が枯渇する可能性は無視できません。**特異な出費や、一時的な自国通貨安、またはインフレの予想以上の進行が重なる最悪のケースでは、計画は容易に破綻します。**計画を実行に移す前に、資産の増強や生活費の見直しを強く推奨します。`;
                 } else if (successRate >= 50) {
-                    stars = '⭐⭐☆☆☆';
-                    comment = `【評価：極めて危険】失敗する確率が成功する確率とほとんど変わりません。
-				<br>この状態でFIREに踏み切るのは極めて危険です。少しでも想定外の事態が発生すれば、資産の枯渇は時間の問題となります。
-				<br>計画の見直しは必須であり、現状のデータでは正社員を辞めるべきではありません。`;
+                    stars = '★★☆☆☆';
+                    comment = `【評価：極めて危険】成功率 ${successRate.toFixed(1)} は、**失敗する確率が成功する確率とほとんど変わりません。**この状態でFIREに踏み切るのは極めて危険です。少しでも想定外の事態が発生すれば、資産の枯渇は時間の問題となります。**計画の見直しは必須であり、現状のデータでは正社員を辞めるべきではありません。**`;
                 } else {
-                    stars = '⭐☆☆☆☆';
-                    comment = `【評価：FIRE不可能】シミュレーションの大半で資産が枯渇するという結果になりました。
-					<br>この計画ではFIREは不可能と考えられます。
-					<br>直ちに出費の削減、収入源の確保、または投資リターンの再検討（リスク許容度とのバランスを見極める）を行ってください。`;
+                    stars = '★☆☆☆☆';
+                    comment = `【評価：FIRE不可能】成功率 ${successRate.toFixed(1)} で、シミュレーションの大半で資産が枯渇するという結果になりました。**この計画ではFIREは不可能と考えられます。**直ちに出費の削減、収入源の確保、または投資リターンの再検討（リスク許容度とのバランスを見極める）を行ってください。`;
                 }
 
-		assessment = stars + "<BR>" + comment;
+                assessment = stars + "<BR>" + comment;
                 if (successRate >= 50 && worst10thAsset <= 0) {
                     assessment += "<br>→ **【注意】** 成功ケースであっても、運が悪いと資産がほとんど残らない（またはマイナスになる）可能性があります。";
                 }
@@ -1449,53 +1312,39 @@
         });
 
         //シミュレーション詳細のテーブルの各銘柄の資産状況の推移情報の表示・非表示処理
-        document.addEventListener('DOMContentLoaded', () => {
-            const table = document.getElementById('detail-table');
-            if (!table) {
-                return;
-            }
-            const meigaraHeaders = table.querySelectorAll('.meigara-header-group');
-            meigaraHeaders.forEach(header => {
-                header.addEventListener('click', (event) => {
-                    //1行目の銘柄項目に横幅の標準化・最小化の処理を行う
-                    // ★★★ 銘柄ヘッダーセル自体に縮小クラスをトグルするだけに変更 ★★★
-                    event.currentTarget.classList.toggle('collapsed');
-                    //クリックされた銘柄の番号を取得
-                    const meigaraIndex = parseInt(event.currentTarget.dataset.meigaraIndex, 10);
+	function showHideStocksInfo(meigaraIndex){
+		// テーブルのすべての行 (ヘッダー行とデータ行) を取得
+                const allRows = document.querySelectorAll('#detail-table tr');
 
-                    //２行目以降のフォントサイズを１にして見えないようにする
-                    const isCollapsed = event.currentTarget.classList.contains('collapsed');
+		    //1行目の銘柄A、銘柄B・・・の表示・非表示の変更
+		    const column = allRows[0].querySelectorAll('td, th')[meigaraIndex + 2]; 
+		    column.classList.toggle('collapsed-detail-text');
+
                     // 銘柄の開始列インデックスを計算 (1-based index)
                     const startColumnIndex_1based = 10 + (meigaraIndex * 4);
                     //銘柄の詳細項目数を取得
-                    const COLUMNS_PER_STOCK = parseInt(event.currentTarget.getAttribute('colspan'), 10);
-                    // テーブルのすべての行 (ヘッダー行とデータ行) を取得
-                    const allRows = document.querySelectorAll('#detail-table tr');
+                    const COLUMNS_PER_STOCK = 4;
+		    //2行目以降の銘柄の詳細情報の表示・非表示の変更
                     allRows.forEach(row => {
                         // 4つの列をまとめて操作
                         for (let i = 0; i < COLUMNS_PER_STOCK; i++) {
                             // 行が 'header-row-2' の場合、共通項目数は8（rowspan=2の影響で1つ少ない）
                             let columnIndex_1based = startColumnIndex_1based + i;
+                            if (row.id === 'header-row-1') {	//1行目は別途処理する
+				continue;
+			    }
                             if (row.id === 'header-row-2') {	//２行目だけ特殊なので、対象列を１つずらす
                                 columnIndex_1based--;
                             }
                             // CSSの :nth-child(n) セレクタを使ってセルを取得
                             const cell = row.querySelector(`:nth-child(${columnIndex_1based})`);
                             if (cell) {
-                                if (isCollapsed) {
-                                    // 縮小時: テキストを透明に
-                                    cell.classList.add('collapsed-detail-text');
-                                } else {
-                                    // 展開時: テキスト色を黒色（デフォルト）に戻す
-                                    cell.classList.remove('collapsed-detail-text');
-                                }
+				//選択した銘柄の詳細を表示・非表示を切り替える
+				cell.classList.toggle('collapsed-detail-text');
                             }
                         }
                     });
-
-                });
-            });
-        });
+	}
     </script>
 </body>
 
