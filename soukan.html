@@ -20,45 +20,30 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+        /* エラー入力時のスタイル */
+        .error-input {
+            border: 2px solid #e74c3c !important;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>相関係数</h1>
-            <p>保有証券で設定した銘柄間の相関係数を設定します。</p>
+            <p>保有証券で設定した**銘柄の種類（ベース銘柄名）**間の相関係数を設定します。口座種別（NISA, 特定など）が異なっても、ベース銘柄名が同じであれば、そのベース銘柄間の相関係数が適用されます。</p>
         </header>
 
         <main>
             <div class="input-section">
-                <h2>銘柄間相関係数</h2>
+                <h2>ベース銘柄間相関係数</h2>
                 
                 <div class="warning-box">
-                    <p⚠️ <strong>重要: 相関係数の設定について</strong></p>
+                    <p>⚠️ <strong>重要: 相関係数の設定について</strong></p>
                     <ul>
-                        <li><strong>相関係数とは？:</strong> ある銘柄の価格が変動したとき、別の銘柄の価格がどの程度、同じ方向（プラス）または反対の方向（マイナス）に動くかを示す数値です。</li>
-                        <li><strong>値の範囲:</strong> **-1.0** (完全に逆の動き) から **+1.0** (完全に同じ動き) の間で設定してください。</li>
-                        <li>**分散投資効果:** シミュレーションにおいて、この値が低いほど（0やマイナスに近いほど）、ポートフォリオ全体のリスクが抑えられ、資産寿命が延びる傾向があります。逆に、+1.0に近い値を多く設定すると、リスクは高まります。</li>
-                        <li>**推奨値:** 通常、株式同士は0.5〜0.9程度、株式と債券は0.0〜0.5程度の値を設定することが多いですが、ご自身のポートフォリオの特性に合わせて慎重に設定してください。</li>
+                        <li>**値の範囲:** **-1.0** (完全に逆の動き) から **+1.0** (完全に同じ動き) の間で設定してください。</li>
+                        <li>**同一銘柄名の扱い:** **同一のベース銘柄名を持つ資産同士**（例: S&P500＜特定＞とS&P500＜NISA＞）の相関係数は、シミュレーション処理時に**自動的に 1.0** となるよう内部でテーブルを生成します。</li>
                     </ul>
                 </div>
-
-                <div class="warning-box">
-                    <p⚠️ <strong>相関係数の求め方</strong></p>
-                    <ul>
-                        <li>方法１</li>
-                        相関係数を調べたい銘柄の過去のデータを大量に取得して、エクセルなどを使って求める。基本的にすべての銘柄を対象に調査可能です。
-                        <li>方法２</li>
-                        有名な銘柄であれば、「S&P500とオルカンの相関係数」などとインターネットで調べると、0.97などの具体的な数値が見つかるのでそれを利用する。
-			<br>注意：結構、古い相関係数であることもある。
-                        <li>方法３＜必殺技！AIに聞いてみちゃう＞</li>
-                        例：モンテカルロシミュレーションで設定する相関係数を知りたいんだけど。S&P500とNASDAQ100ってここ１０年で相関係数はどのくらい？
-			<br>注意：でたらめなこというケースもある。
-                        <li>＜参考＞</li>
-                        「ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）」 と 「ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド」のような対象がほぼほぼ同じケースのときは、「0.99999」などにしておけば、微妙な違いはあるけど、ほぼ同じにできます。「1」でもいいと思いますけど…。
-                    </ul>
-                </div>
-
                 
                 <div id="soukanContainer">
                     </div>
@@ -77,119 +62,172 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
 
-    const soukanContainer = document.getElementById('soukanContainer');
-    const saveSoukanBtn = document.getElementById('saveSoukanBtn');
+            const soukanContainer = document.getElementById('soukanContainer');
+            const saveSoukanBtn = document.getElementById('saveSoukanBtn');
 
-    // ★ 新規追加 ★ 銘柄名から口座種別（＜特定＞, ＜成長＞, etc.）を除去し、ベースの銘柄名（種類）を抽出する関数
-    const extractBaseMeigara = (meigara) => {
-        // 正規表現で「<... >」の部分を削除
-        return meigara.replace(/＜[^＞]+＞$/, '').trim();
-    };
+            /**
+             * stocks.htmlで保存されたMeigara (銘柄名＜口座名＞の形式) から、口座種別を除去し、
+             * ベースの銘柄名（種類）を抽出する関数
+             * @param {object} stock - stocks配列の要素
+             * @returns {string} - ベース銘柄名
+             */
+            const getBaseMeigaraName = (stock) => {
+                // stocks.htmlで導入された MeigaraName フィールドがあれば優先
+                if (stock.MeigaraName) {
+                    return stock.MeigaraName;
+                }
+                // 旧データ互換性用: Meigara: "S&P500＜特定＞" の形式から抽出
+                return stock.Meigara.replace(/＜[^＞]+＞$/, '').trim();
+            };
+            
+            /**
+             * Local Storageからデータを読み込み、相関係数フォームを生成する
+             */
+            const loadSoukanForm = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const stocks = appData.stocks || [];
+                
+                // 銘柄名＜口座名＞の全リスト (シミュレーション側が期待するMeigara)
+                const fullMeigaraList = stocks.map(stock => stock.Meigara);
 
-    const loadSoukanForm = () => {
-        const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
-        const stocks = appData.stocks || [];
-        const soukanData = appData.soukan || [];
-        soukanContainer.innerHTML = '';
-        
-        if (stocks.length < 2) {
-            soukanContainer.innerHTML = `<p>相関係数を設定するには、2つ以上の銘柄を登録してください。</p>`;
-            return;
-        }
+                // 旧形式の相関係数データ（Meigaraペア）をベース銘柄名ペアのデータに変換
+                // ユーザー入力フォームに表示するためのデータ
+                let baseSoukanMap = new Map(); // Key: "BaseA|BaseB", Value: keisu
+                
+                // 1. 銘柄名＜口座名＞の組み合わせからベース銘柄名（種類）のユニークリストを生成
+                const baseMeigaraSet = new Set();
+                stocks.forEach(stock => {
+                    baseMeigaraSet.add(getBaseMeigaraName(stock));
+                });
+                const baseMeigaraList = Array.from(baseMeigaraSet);
+                
+                // 2. 過去の保存データがあれば、それをベース銘柄ペアに集約
+                const savedFullSoukanData = appData.soukan || [];
+                savedFullSoukanData.forEach(s => {
+                    const baseA = getBaseMeigaraName({ Meigara: s.A_Meigara });
+                    const baseB = getBaseMeigaraName({ Meigara: s.B_Meigara });
 
-        // 組み合わせを生成し、フォームを作成（重複は既に排除されている）
-        for (let i = 0; i < stocks.length; i++) {
-            for (let j = i + 1; j < stocks.length; j++) {
-                const meigaraA = stocks[i].Meigara;
-                const meigaraB = stocks[j].Meigara;
+                    // 同一銘柄同士（相関1.0）のデータはスキップ
+                    if (baseA === baseB) return; 
 
-                // ★ 修正点：ベースの銘柄名が同一の場合、入力をスキップする
-                if (extractBaseMeigara(meigaraA) === extractBaseMeigara(meigaraB)) {
-                    // 同一銘柄なので、相関係数は 1.0 が期待されるため、フォームを生成せずスキップ
-                    continue; 
+                    // ペアを正規化（辞書順に並び替え）
+                    const key = [baseA, baseB].sort().join('|');
+
+                    // 同じベースペアに対して複数の相関値が保存されている場合、最初の値を採用（通常、全て同じはず）
+                    if (!baseSoukanMap.has(key)) {
+                        baseSoukanMap.set(key, s.keisu);
+                    }
+                });
+                
+                if (baseMeigaraList.length < 2) {
+                    soukanContainer.innerHTML = `<p>相関係数を設定するには、2つ以上の**異なる種類の銘柄**を登録してください。</p>`;
+                    return;
                 }
 
-                const existingSoukan = soukanData.find(s => 
-                    (s.A_Meigara === meigaraA && s.B_Meigara === meigaraB) ||
-                    (s.A_Meigara === meigaraB && s.B_Meigara === meigaraA)
-                );
-                const keisuValue = existingSoukan ? existingSoukan.keisu : 0.0;
+                soukanContainer.innerHTML = '';
+                
+                // 3. ユニークなベース銘柄名間の組み合わせを生成し、フォームを作成
+                for (let i = 0; i < baseMeigaraList.length; i++) {
+                    for (let j = i + 1; j < baseMeigaraList.length; j++) {
+                        const baseMeigaraA = baseMeigaraList[i];
+                        const baseMeigaraB = baseMeigaraList[j];
+                        
+                        // ペアを正規化
+                        const key = [baseMeigaraA, baseMeigaraB].sort().join('|');
+                        // 過去の入力値を取得。なければデフォルト値 0.0
+                        const keisuValue = baseSoukanMap.has(key) ? baseSoukanMap.get(key) : 0.0;
 
-                const formHtml = `
-                    <div class="form-group">
-                        <label>${meigaraA} と ${meigaraB}:</label>
-                        <input type="number" step="0.01" class="soukan-keisu" 
-                               data-meigara-a="${meigaraA}" data-meigara-b="${meigaraB}" 
-                               value="${keisuValue}" required>
-                    </div>
-                `;
-                soukanContainer.innerHTML += formHtml;
-            }
-        }
-        
-        // フォームが一つも生成されなかった場合の処理
-        if (soukanContainer.innerHTML === '') {
-            soukanContainer.innerHTML = `<p>登録されている全ての銘柄は実質的に同一種類であるため、相関係数の設定は不要です。</p>`;
-        }
-    };
+                        const formHtml = `
+                            <div class="form-group">
+                                <label>【${baseMeigaraA}】 と 【${baseMeigaraB}】 の相関係数:</label>
+                                <input type="number" step="0.01" class="soukan-keisu" 
+                                       data-base-meigara-a="${baseMeigaraA}" data-base-meigara-b="${baseMeigaraB}" 
+                                       value="${keisuValue}" required min="-1.0" max="1.0">
+                            </div>
+                        `;
+                        soukanContainer.innerHTML += formHtml;
+                    }
+                }
+            };
+            
+            /**
+             * 相関係数データをシミュレーション互換形式（銘柄名＜口座名＞の全ペア）で保存する
+             */
+            saveSoukanBtn.addEventListener('click', () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const stocks = appData.stocks || [];
+                const fullMeigaraList = stocks.map(stock => stock.Meigara);
 
-    saveSoukanBtn.addEventListener('click', () => {
-        const soukanData = [];
-        let isValid = true;
-        
-        // 既存の銘柄リストを再取得
-        const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
-        const stocks = appData.stocks || [];
+                // 1. ユーザーが入力した「ベース銘柄名」ペアの相関係数を Map に格納
+                let baseSoukanInputMap = new Map(); // Key: "BaseA|BaseB", Value: keisu
+                let isValid = true;
+                
+                document.querySelectorAll('.soukan-keisu').forEach(input => {
+                    const value = parseFloat(input.value);
+                    const baseMeigaraA = input.dataset.baseMeigaraA;
+                    const baseMeigaraB = input.dataset.baseMeigaraB;
 
-        // ユーザーが入力した相関係数を取得
-        document.querySelectorAll('.soukan-keisu').forEach(input => {
-            const value = parseFloat(input.value);
+                    if (isNaN(value) || value < -1.0 || value > 1.0) {
+                        isValid = false;
+                        input.classList.add('error-input');
+                        return;
+                    } else {
+                        input.classList.remove('error-input');
+                    }
 
-            if (isNaN(value) || value < -1.0 || value > 1.0) {
-                isValid = false;
-                input.classList.add('error-input');
-                return;
-            } else {
-                input.classList.remove('error-input');
-            }
+                    // ペアを正規化してMapに格納
+                    const key = [baseMeigaraA, baseMeigaraB].sort().join('|');
+                    baseSoukanInputMap.set(key, value);
+                });
 
-            soukanData.push({
-                A_Meigara: input.dataset.meigaraA,
-                B_Meigara: input.dataset.meigaraB,
-                keisu: value
+                if (!isValid) {
+                    alert('相関係数は-1.0から1.0までの数値を入力してください。');
+                    return;
+                }
+                
+                // 2. シミュレーション互換形式 (銘柄名＜口座名＞の全ペア) のテーブルを構築
+                const finalSoukanData = [];
+                for (let i = 0; i < fullMeigaraList.length; i++) {
+                    for (let j = i + 1; j < fullMeigaraList.length; j++) {
+                        const meigaraA = fullMeigaraList[i];
+                        const meigaraB = fullMeigaraList[j];
+                        
+                        // 銘柄名＜口座名＞からベース銘柄名を取得
+                        const baseMeigaraA = getBaseMeigaraName(stocks.find(s => s.Meigara === meigaraA));
+                        const baseMeigaraB = getBaseMeigaraName(stocks.find(s => s.Meigara === meigaraB));
+
+                        let keisu;
+                        
+                        if (baseMeigaraA === baseMeigaraB) {
+                            // (A) ベース銘柄名が同じ場合: 相関 1.0
+                            keisu = 1.0;
+                        } else {
+                            // (B) ベース銘柄名が異なる場合: ユーザー入力を参照
+                            const key = [baseMeigaraA, baseMeigaraB].sort().join('|');
+                            keisu = baseSoukanInputMap.get(key) || 0.0; // 入力がなければ 0.0
+                        }
+
+                        // シミュレーションが期待する旧形式でデータに追加
+                        finalSoukanData.push({
+                            A_Meigara: meigaraA,
+                            B_Meigara: meigaraB,
+                            keisu: keisu
+                        });
+                    }
+                }
+
+                // 3. Local Storageに保存（シミュレーション互換の旧形式）
+                appData.soukan = finalSoukanData;
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                
+                alert('相関係数の設定が保存されました！シミュレーション実行に必要な全銘柄の相関テーブルが自動生成されました。');
+                
+                // 保存後にフォームを再読み込みし、最新の状態を反映
+                loadSoukanForm();
             });
-        });
 
-        if (!isValid) {
-            alert('相関係数は-1.0から1.0までの数値を入力してください。');
-            return;
-        }
-
-        // ★ 修正点：入力をスキップした「同一銘柄のペア」の相関係数 1.0 を自動的に追加する
-        for (let i = 0; i < stocks.length; i++) {
-            for (let j = i + 1; j < stocks.length; j++) {
-                const meigaraA = stocks[i].Meigara;
-                const meigaraB = stocks[j].Meigara;
-
-                if (extractBaseMeigara(meigaraA) === extractBaseMeigara(meigaraB)) {
-                    // 同一銘柄の場合は、相関係数 1.0 としてデータに自動追加
-                    soukanData.push({
-                        A_Meigara: meigaraA,
-                        B_Meigara: meigaraB,
-                        keisu: 1.0
-                    });
-                }
-            }
-        }
-        
-        appData.soukan = soukanData;
-        localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
-        alert('相関係数の設定が保存されました！');
-    });
-
-    loadSoukanForm();
-
-
+            // 初期ロード
+            loadSoukanForm();
         });
     </script>
 </body>
