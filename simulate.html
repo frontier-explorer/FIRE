@@ -76,6 +76,11 @@
             margin-top: 30px;
             border: 1px solid #ccc;
             background-color: #fff;
+
+            /* スクロール範囲を限定するために高さを指定 */
+            height: 500px;
+            /* 縦スクロールを有効にする */
+            overflow-y: scroll;
         }
 
         #detail-table {
@@ -108,9 +113,7 @@
         }
 
         /* 共通項目のカラム幅を固定 */
-        #detail-table tr th:nth-child(1) {}
-
-        ,
+        #detail-table tr th:nth-child(1) {} ,
         #detail-table tr td:nth-child(1) {}
 
         /* (1) 年月 */
@@ -161,6 +164,45 @@
         #detail-table td:nth-child(4n + 13) {}
 
         /* 現在/平均（税金/1口あたり） */
+
+
+/**********************************************************/
+        /* 4. <tr>1と<tr>2内の<td>を固定する */
+	/* 1. <thead>内の1行目（#header-row-1）のセルを固定 */
+	/* <thead> > tr:nth-child(1) の中の th, td */
+	#detail-table thead tr:nth-child(1) th,
+	#detail-table thead tr:nth-child(1) td {
+		/*固定位置を一番上 (0px) に設定 */
+		position: sticky;
+		top: 0;
+		/*重なり順を設定 (固定部分を上に表示) */
+		z-index: 20;
+		/* 見やすくするために背景色を設定 */
+		background-color: #f2f2f2;
+	}
+
+	/* 2. <thead>内の2行目（#header-row-2）のセルを、1行目の直下に固定 */
+	/* <thead> > tr:nth-child(2) の中の th, td */
+	#detail-table thead tr:nth-child(2) th,
+	#detail-table thead tr:nth-child(2) td {
+		position: sticky;
+		top: 21px;
+		background-color: #e6ffe6;
+		z-index: 10;
+	}
+        /* <tr>2のセルは、<tr>1のセルの直下に固定されるように、topを調整します */
+        /* <tr>1の高さが40pxだと仮定して設定 (実際の高さに合わせて調整が必要です) */
+        tr:nth-child(2) th,
+        tr:nth-child(2) td {
+            top: 20px; 
+            background-color: #e6ffe6;
+        }
+        /* 実際の表示の調整: th (ヘッダー) のセルをより目立たせる */
+        th {
+            background-color: #ddd;
+            z-index: 11; /* thの方がtdより上に来るように */
+        }
+/**********************************************************/
 
         /* 銘柄ごとの１行目の銘柄毎の集団項目*/
         .meigara-header-group {
