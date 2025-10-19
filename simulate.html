@@ -457,19 +457,25 @@
             const { bigExpense, income } = appData;
 
             // 1. 収入処理 
-            const incomeEvent = income.find(inc =>
+            const incomeEvent = income.filter(inc =>
                 monthIndex >= inc.startTotalMonths &&
                 (inc.endTotalMonths === null || inc.endTotalMonths === undefined || monthIndex <= inc.endTotalMonths)
             );
-            const monthlyIncome = incomeEvent ? incomeEvent.amount : 0;
+            let monthlyIncome = 0;
+	    incomeEvent.forEach(inc => {
+		monthlyIncome += inc.amount
+	   });
             currentCash += monthlyIncome;
 
             // 2. 出費処理
             const baseLifeCost = currentMonthlyLifeCost;
 
             // 大口出費を検索
-            const bigExpenseEvent = bigExpense.find(be => be.month === monthIndex);
-            const bigExpenseAmount = bigExpenseEvent ? bigExpenseEvent.amount : 0;
+	    let bigExpenseAmount = 0;
+            const bigExpenseEvent = bigExpense.filter(be => be.month === monthIndex);
+	    bigExpenseEvent.forEach(be => {
+		bigExpenseAmount += be.amount;
+	    });
 
             // 月次総出費 (表示用/計算用)
             const monthlyTotalExpense = baseLifeCost + bigExpenseAmount;
