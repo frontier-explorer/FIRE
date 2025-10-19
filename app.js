@@ -115,9 +115,9 @@ window.compareMonthAndGetCurrent = (targetYm) =>{
     const targetTotalMonths = targetYear * 12 + targetMonth;
 
     // 比較
-    if (currentTotalMonths >= targetTotalMonths) {
+    if (currentTotalMonths > targetTotalMonths) {
         // 実行年月 >= yyyy-mm のとき
-        return 0;
+        return -1;
     } else {
         // 実行年月 < yyyy-mm のとき
         // 差を月数で取得 (実行年月 - yyyy-mm)
