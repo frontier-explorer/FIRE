@@ -166,8 +166,6 @@
         /* 現在/平均（税金/1口あたり） */
 
 
-/**********************************************************/
-        /* 4. <tr>1と<tr>2内の<td>を固定する */
 	/* 1. <thead>内の1行目（#header-row-1）のセルを固定 */
 	/* <thead> > tr:nth-child(1) の中の th, td */
 	#detail-table thead tr:nth-child(1) th,
@@ -202,7 +200,6 @@
             background-color: #ddd;
             z-index: 11; /* thの方がtdより上に来るように */
         }
-/**********************************************************/
 
         /* 銘柄ごとの１行目の銘柄毎の集団項目*/
         .meigara-header-group {
@@ -252,6 +249,28 @@
             color: #3498db;
         }
 
+/* グラフコンテナのスタイル */
+#chart-container {
+    position: absolute; /* 絶対位置指定に変更 */
+    display: none;      /* 初期状態は非表示 */
+    width: 600px;       /* グラフの幅を指定 (調整可能) */
+    max-width: 90%;     /* 画面幅に応じた最大幅 */
+    min-height: 350px;
+    background-color: white; /* 背景色を追加 */
+    border: 1px solid #ccc;  /* 境界線を追加 */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1); /* 影を追加 */
+    z-index: 100;       /* 他の要素より手前に表示 */
+    cursor: pointer;    /* クリック可能を示すカーソル */
+    padding: 10px;      /* 内側の余白 */
+    box-sizing: border-box; /* paddingを含めて幅計算 */
+}
+
+/* シミュレーション詳細セクションは常に表示しておく (テーブル用) */
+#simulation-detail {
+    display: block; /* テーブル部分は常に表示 */
+}
+
+
         /* 5.4. デバッグ機能 */
         #debug-output {
             margin-top: 30px;
@@ -291,11 +310,10 @@
         </section>
 
         <section id="simulation-detail" style="display: none;">
-            <h2 id="detail-title" style="text-align: left;">シミュレーション詳細（試行 #1）</h2>
-
-            <div id="chart-container" style="width: 95%; margin: 30px auto; min-height: 350px;">
-                <canvas id="totalAssetChart"></canvas>
-            </div>
+		<h2 id="detail-title" style="text-align: left;">シミュレーション詳細（試行 #1）</h2>
+		<div id="chart-container" style="width: 95%; margin: 30px auto; min-height: 350px; cursor: pointer;">
+			<canvas id="totalAssetChart"></canvas>
+		</div>
 
             <div id="meigara-legend">
                 <h3>凡例</h3>
@@ -930,6 +948,10 @@
             const headerRow1 = document.getElementById('header-row-1');
             const headerRow2 = document.getElementById('header-row-2');
 
+	    const chartContainer = document.getElementById('chart-container'); // グラフコンテナを取得
+	    const totalAssetChartCanvas = document.getElementById('totalAssetChart'); // Canvas要素を取得
+
+
             let simulationResults = [];
             let currentTrialIndex = -1;
             let meigaraNames = [];
@@ -1009,8 +1031,9 @@
             /**
              * シミュレーション詳細テーブルに結果を表示
              * @param {number} trialIndex - 表示する試行のインデックス
+	     * @param {HTMLElement} clickedButton - クリックされたボタン要素
              */
-            function displaySimulationDetail(trialIndex) {
+	function displaySimulationDetail(trialIndex, clickedButton) {
                 currentTrialIndex = trialIndex;
                 const result = simulationResults[trialIndex];
                 const history = result.history;
@@ -1151,6 +1174,44 @@
                     }
                 });
 
+
+// --- ★グラフコンテナの位置計算と表示 ---
+        if (clickedButton) {
+            const buttonRect = clickedButton.getBoundingClientRect();
+            const containerRect = simulationButtonsDiv.getBoundingClientRect(); // ボタンコンテナの位置
+
+            // ボタンの下端を基準に位置を計算 (スクロール位置も考慮)
+            let topPosition = window.scrollY + buttonRect.bottom;
+            let leftPosition = window.scrollX;
+
+            // 画面下部にはみ出す場合の調整 (簡易的)
+            const chartHeight = 350 + 20 + 2; // min-height + padding + border
+            if (topPosition + chartHeight > window.scrollY + window.innerHeight) {
+                topPosition = window.scrollY + buttonRect.top - chartHeight; // ボタンの上に表示
+                 if (topPosition < window.scrollY) { // 画面上部にもはみ出すなら中央付近に
+                    topPosition = window.scrollY + 50;
+                }
+            }
+
+            // 画面右側にはみ出す場合の調整
+            const chartWidth = 600 + 20 + 2; // width + padding + border
+             if (leftPosition + chartWidth > window.scrollX + window.innerWidth) {
+                leftPosition = window.scrollX + window.innerWidth - chartWidth - 10; // 右端に寄せる
+            }
+             if (leftPosition < window.scrollX) { // 画面左にもはみ出すなら中央付近に
+                leftPosition = window.scrollX + 10;
+            }
+
+
+            chartContainer.style.top = `${Math.max(0, topPosition)}px`;
+            chartContainer.style.left = `${Math.max(0, leftPosition)}px`;
+            chartContainer.style.display = 'block';
+        } else {
+             chartContainer.style.display = 'none'; // ボタン情報がない場合は非表示
+        }
+
+
+
             }
 
 
@@ -1161,6 +1222,7 @@
              */
             function updateSimulationButtons(showFailuresOnly) {
                 simulationButtonsDiv.innerHTML = '';
+		chartContainer.style.display = 'none';
 
                 simulationResults.forEach((result, index) => {
                     if (showFailuresOnly && result.success) return;
@@ -1171,7 +1233,7 @@
                     button.textContent = result.trialId;
 
                     button.addEventListener('click', () => {
-                        displaySimulationDetail(index);
+			displaySimulationDetail(index, button);
                     });
 
                     simulationButtonsDiv.appendChild(button);
@@ -1262,18 +1324,6 @@
 			        </div>
 			    </div>
 			`;
-
-                // 詳細表示の表示/非表示を制御するロジック
-                if (currentTrialIndex !== -1) {
-                    const currentResult = simulationResults[currentTrialIndex];
-
-                    // 詳細が表示されている試行が、現在のフィルター（失敗のみ）で非表示になるべきかチェック
-                    if (currentResult && showFailuresOnly && currentResult.success) {
-                        detailSection.style.display = 'none';
-                    } else {
-                        detailSection.style.display = 'block';
-                    }
-                }
             }
 
 
@@ -1328,6 +1378,17 @@
 
                 return assessment;
             }
+
+
+// --- ★グラフ非表示のためのダブルクリックイベントリスナーを追加 ---
+    chartContainer.addEventListener('dblclick', () => {
+        chartContainer.style.display = 'none';
+        if (totalAssetChartInstance) {
+            totalAssetChartInstance.destroy(); // グラフインスタンスも破棄
+            totalAssetChartInstance = null;
+        }
+    });
+
 
 
             // --- メイン処理 ---
