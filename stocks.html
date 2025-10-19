@@ -329,15 +329,13 @@
                         <input type="number" step="0.01" class="volatility-input synchronized-input" data-sync-field="Volatility" value="${stockData.Volatility || ''}" required>
                     </div>
                     <div class="form-group tax-start-group">
-                        <label>税金開始時期（年/月）:</label>
-                        <input type="number" class="tax-start-year" placeholder="年" value="${stockData.TaxStartYear !== null && stockData.TaxStartYear !== undefined ? stockData.TaxStartYear : ''}">
-                        <span>/</span>
-                        <input type="number" class="tax-start-month" placeholder="月" value="${stockData.TaxStartMonth !== null && stockData.TaxStartMonth !== undefined ? stockData.TaxStartMonth : ''}">
+			<label for="month-input">税金開始時期（年月）:</label>
+			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${stockData.fromMonth || ''}">
                         <p style="font-size: 12px; color: #888; margin-left: 10px;">
                             空欄: 生涯無税<br>
-                            0/1: 最初から課税
                         </p>
                     </div>
+
                     <button type="button" class="remove-stock-btn">この銘柄を削除</button>
                 `;
                 
@@ -416,8 +414,8 @@
                     const averagePriceValue = item.querySelector('.average-price-input').value;
                     const returnRate = item.querySelector('.return-input').value;
                     const volatility = item.querySelector('.volatility-input').value;
-                    const taxStartYearInput = item.querySelector('.tax-start-year').value;
-                    const taxStartMonthInput = item.querySelector('.tax-start-month').value;
+
+                    const fromMonth = item.querySelector('.tax-from-month-input');
 
                     // カンマを除去して数値に変換
                     const kuchisu = parseInt(kuchisuValue.replace(/,/g, ''), 10);
@@ -425,43 +423,23 @@
                     const currentValuePerUnit = parseInt(currentValueValue.replace(/,/g, ''), 10);
                     const averagePrice = parseInt(averagePriceValue.replace(/,/g, ''), 10);
                     
-                    let taxStartYear = taxStartYearInput ? parseInt(taxStartYearInput, 10) : null;
-                    let taxStartMonth = taxStartMonthInput ? parseInt(taxStartMonthInput, 10) : null;
+                    let taxStartYear = null;
+                    let taxStartMonth = null;
                     
-                    // 税金開始時期の補正
-                    if (taxStartYear === 0 && (taxStartMonth === 0 || taxStartMonth === null)) {
-                        taxStartMonth = 1; 
-                    } else if (taxStartYear !== null && taxStartMonth === null) {
-                         taxStartMonth = 1;
-                    } else if (taxStartYear === null && taxStartMonth !== null) {
-                        taxStartYear = 0;
-                    }
-
                     // バリデーションチェック
                     if (!baseMeigaraName || !finalAccountType || isNaN(kuchisu) || isNaN(tani) || isNaN(currentValuePerUnit) || isNaN(averagePrice) || isNaN(parseFloat(returnRate)) || isNaN(parseFloat(volatility)) || kuchisu < 0 || tani <= 0 || currentValuePerUnit <= 0 || averagePrice <= 0 || parseFloat(returnRate) < -100 || parseFloat(volatility) < 0) {
                         alert('全ての項目に正しい数値を入力/選択してください。銘柄名または口座種別が空欄です。');
                         isValid = false;
                         return;
                     }
-                    
-                    if ((taxStartYear !== null && (isNaN(taxStartYear) || taxStartYear < 0)) ||
-                        (taxStartMonth !== null && (isNaN(taxStartMonth) || taxStartMonth < 1 || taxStartMonth > 12)) ) {
-                        alert('税金開始時期は正しい年（0以上）/月（1から12）を入力するか、両方空欄にしてください。');
-                        isValid = false;
-                        return;
-                    }
 
-                    // 生涯無税の判定
-                    if (taxStartYear === null && taxStartMonth === null) {
-                        // 生涯無税として保存
-                    } else if (taxStartYear !== null && taxStartMonth !== null) {
-                        // 課税開始時期として保存
-                    } else {
-                        isValid = false;
-                        alert('税金開始時期の処理で予期せぬエラーが発生しました。');
-                        return;
-                    }
-
+		    let w_fromMonth = null;
+		    if(fromMonth.value.trim() !== ""){
+			w_fromMonth = fromMonth.value.trim();
+			let w = parseInt(compareMonthAndGetCurrent(w_fromMonth),10);
+			taxStartYear = Math.floor(w / 12);
+			taxStartMonth = (w % 12);
+		    }
 
                     stocksData.push({
                         Meigara: fullMeigara, // simulate.htmlが期待する形式
@@ -472,7 +450,8 @@
                         Return: parseFloat(returnRate),
                         Volatility: parseFloat(volatility),
                         TaxStartYear: taxStartYear, 
-                        TaxStartMonth: taxStartMonth
+                        TaxStartMonth: taxStartMonth,
+			fromMonth: w_fromMonth
                     });
                 });
 

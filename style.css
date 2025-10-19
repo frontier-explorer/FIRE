@@ -141,6 +141,7 @@ h3 {
     color: var(--color-text);
 }
 
+.form-group input[type="month"], 
 .form-group input[type="number"], 
 .form-group input[type="date"],
 .form-group input[type="text"] {

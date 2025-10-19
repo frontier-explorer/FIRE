@@ -89,11 +89,8 @@
                 lifeCostItem.innerHTML = `
                     <h3>生活費設定 ${index + 1}</h3>
                     <div class="form-group input-group">
-                        <label>適用開始時期:</label>
-                        <input type="number" class="life-cost-year" placeholder="年" value="${lifeCostData.month !== undefined ? Math.floor(lifeCostData.month / 12) : ''}" required>
-                        <span>年</span>
-                        <input type="number" class="life-cost-month" placeholder="月" value="${lifeCostData.month !== undefined ? (lifeCostData.month % 12) : ''}" required>
-                        <span>月</span>
+			<label for="month-input">収入が発生する年・月を選択:</label>
+			<input type="month" class="life-cost-from-month-input" name="selected-from-month"  value="${lifeCostData.fromMonth || ''}">
                     </div>
                     <div class="form-group input-group">
                         <label>金額（円/月）:</label>
@@ -153,31 +150,27 @@
                 let isValid = true;
                 
                 document.querySelectorAll('.life-cost-item').forEach(item => {
-                    const yearInput = item.querySelector('.life-cost-year');
-                    const monthInput = item.querySelector('.life-cost-month');
+                    const fromMonth = item.querySelector('.life-cost-from-month-input');
                     const amountInput = item.querySelector('.life-cost-amount');
                     
-                    const year = parseInt(yearInput.value, 10);
-                    const month = parseInt(monthInput.value, 10);
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
-                    
-                    if (isNaN(year) || isNaN(month) || isNaN(amount) || year < 0 || month < 0 || month > 11 || amount < 0) {
+                   
+                    if (fromMonth.value.trim() === ""  || amount < 0) {
                         isValid = false;
-                        yearInput.classList.add('error-input');
-                        monthInput.classList.add('error-input');
+                        fromMonth.classList.add('error-input');
                         amountInput.classList.add('error-input');
                         return;
                     } else {
-                        yearInput.classList.remove('error-input');
-                        monthInput.classList.remove('error-input');
+                        fromMonth.classList.remove('error-input');
                         amountInput.classList.remove('error-input');
                     }
                     
-                    const totalMonths = year * 12 + month;
+                    const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
 
                     lifeCosts.push({
                         month: totalMonths,
-                        amount: amount
+                        amount: amount,
+			fromMonth: fromMonth.value
                     });
                 });
 

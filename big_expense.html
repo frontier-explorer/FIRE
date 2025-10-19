@@ -43,12 +43,9 @@
                 bigExpenseItem.classList.add('big-expense-item');
                 bigExpenseItem.innerHTML = `
                     <h3>出費設定 ${index + 1}</h3>
-                    <div class="form-group input-group">
-                        <label>発生時期:</label>
-                        <input type="number" class="big-expense-year" placeholder="年" value="${bigExpenseData.month !== undefined ? Math.floor(bigExpenseData.month / 12) : ''}" required>
-                        <span>年</span>
-                        <input type="number" class="big-expense-month" placeholder="月" value="${bigExpenseData.month !== undefined ? (bigExpenseData.month % 12) + 1 : ''}" required>
-                        <span>月</span>
+                    <div class="form-group">
+			<label for="month-input">出費が発生する年・月を選択:</label>
+			<input type="month" class="big-expense-month-input" name="selected-month"  value="${bigExpenseData.from_month || ''}">
                     </div>
                     <div class="form-group">
                         <label>大きな出費額（円）:</label>
@@ -92,12 +89,15 @@
                     bigExpenseContainer.appendChild(createBigExpenseItem(0));
                 }
                 updateBigExpenseNumbers();
+
                 // 金額入力欄のフォーマットを再適用
                 document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+			//初回１回のみ３桁毎の数値に変換する処理
                     if (input.value) {
                         const value = input.value.replace(/,/g, '');
                         input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
                     }
+			//numericの設定になっているものに、入力の都度、３桁毎の数値に変換する処理を呼び出す。
                     input.addEventListener('input', formatNumberInput);
                 });
             };
@@ -115,53 +115,42 @@
 
             saveBigExpenseBtn.addEventListener('click', () => {
                 const bigExpenseData = [];
-                let isValid = true;
+		let errorFlg = false;
                 
                 document.querySelectorAll('.big-expense-item').forEach(item => {
-                    const yearInput = item.querySelector('.big-expense-year');
-                    const monthInput = item.querySelector('.big-expense-month');
+                    const from_monthInput = item.querySelector('.big-expense-month-input');
                     const amountInput = item.querySelector('.big-expense-amount');
                     const reasonInput = item.querySelector('.big-expense-reason');
-
-                    // カンマを削除して数値に変換
-                    let year = parseInt(yearInput.value, 10);
-                    let month = parseInt(monthInput.value, 10);
+                   
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
                     const reason = reasonInput.value;
 
-                    // 0/0と0/1は同義
-                    if (year === 0 && month === 0) {
-                        month = 1;
-                    }
-                    
-                    if (isNaN(year) || isNaN(month) || isNaN(amount) || year < 0 || month < 1 || month > 12 || amount < 0) {
-                        isValid = false;
-                        // エラーになった入力欄のスタイルを変更
-                        yearInput.classList.add('error-input');
-                        monthInput.classList.add('error-input');
+                    // 入力エラーチェック
+                    if (from_monthInput.value == "" || isNaN(amount) || amount < 0) {
+			//エラーになった入力欄のスタイルを変更
+                        from_monthInput.classList.add('error-input');
                         amountInput.classList.add('error-input');
+                        alert('全ての項目に正しい設定を入力してください。');
+		        errorFlg = true;
                         return;
-                    } else {
-                        // エラーが解消された場合はスタイルを元に戻す
-                        yearInput.classList.remove('error-input');
-                        monthInput.classList.remove('error-input');
-                        amountInput.classList.remove('error-input');
                     }
+		    // エラーがない状態の場合はスタイルを元に戻す
+                    from_monthInput.classList.remove('error-input');
+                    amountInput.classList.remove('error-input');
                     
-                    const totalMonths = year * 12 + (month - 1); // 0-11の月に変換
+		    var w_month = compareMonthAndGetCurrent(from_monthInput.value)
 
                     bigExpenseData.push({
-                        month: totalMonths,
+                        month: w_month,
                         amount: amount,
-                        reason: reason
+                        reason: reason,
+			from_month: from_monthInput.value
                     });
                 });
 
-                if (!isValid) {
-                    alert('全ての項目に正しい数値を入力してください。年数は0以上、月は1から12までの数値を入力してください。');
-                    return;
-                }
-
+                if(errorFlg == true){
+			return;
+		}
                 const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
                 appData.bigExpense = bigExpenseData.sort((a, b) => a.month - b.month); // 総月数でソート
                 localStorage.setItem('fireSimulatorData', JSON.stringify(appData));

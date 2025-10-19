@@ -111,25 +111,6 @@
                 return options;
             };
 
-            // 数値をカンマ区切りで表示し、変更時にカンマを自動挿入するイベントを設定
-            const setupAmountInput = (inputElement) => {
-                const initialValue = inputElement.value;
-                if (initialValue && !isNaN(parseInt(initialValue.replace(/,/g, '')))) {
-                    inputElement.value = window.formatNumber(parseInt(initialValue));
-                }
-
-                inputElement.addEventListener('blur', (e) => {
-                    const value = e.target.value.replace(/,/g, '');
-                    if (!isNaN(value) && value !== '') {
-                        e.target.value = window.formatNumber(parseInt(value, 10));
-                    }
-                });
-
-                inputElement.addEventListener('focus', (e) => {
-                    e.target.value = e.target.value.replace(/,/g, '');
-                });
-            };
-
             // 投資アイテムの番号を更新する
             const updateTuikaNumbers = () => {
                 document.querySelectorAll('.tuika-item h3').forEach((header, index) => {
@@ -147,10 +128,9 @@
                 // HTML生成
                 itemDiv.innerHTML = `
                     <h3>追加投資イベント</h3>
-                    <div class="input-group">
-                        <label>**追加投資年月（年/月）:**</label>
-                        <input type="number" class="tuika-year" value="${year}" min="0" required placeholder="年"> / 
-                        <input type="number" class="tuika-month" value="${month}" min="1" max="12" required placeholder="月">
+                    <div class="input-group input-group">
+			<label for="month-input">追加投資する年・月を選択:</label>
+			<input type="month" class="tuika-from-month-input" name="selected-from-month"  value="${data.fromMonth || ''}">
                     </div>
                     <div class="input-group">
                         <label>銘柄:</label>
@@ -160,13 +140,10 @@
                     </div>
                     <div class="input-group">
                         <label>投資額（円）:</label>
-                        <input type="text" class="tuika-amount" value="${data.amount}" required>
+                        <input type="text" class="tuika-amount" value="${data.amount}" inputmode="numeric" pattern="[0-9,]*" required>
                     </div>
                     <button type="button" class="nav-button remove-btn">削除</button>
                 `;
-
-                const amountInput = itemDiv.querySelector('.tuika-amount');
-                setupAmountInput(amountInput); // 投資額入力欄のフォーマットを設定
 
                 const removeBtn = itemDiv.querySelector('.remove-btn');
                 removeBtn.addEventListener('click', () => {
@@ -193,6 +170,18 @@
                 } else {
                     tuikaData.forEach(data => createTuikaItem(data));
                 }
+
+                // 金額入力欄のフォーマットを再適用
+                document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+			//初回１回のみ３桁毎の数値に変換する処理
+                    if (input.value) {
+                        const value = input.value.replace(/,/g, '');
+                        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+			//numericの設定になっているものに、入力の都度、３桁毎の数値に変換する処理を呼び出す。
+                    input.addEventListener('input', formatNumberInput);
+                });
+
             };
             
             // --- イベントリスナーの設定 ---
@@ -203,37 +192,33 @@
                 let isValid = true;
                 
                 document.querySelectorAll('.tuika-item').forEach(itemDiv => {
-                    const yearInput = itemDiv.querySelector('.tuika-year');
-                    const monthInput = itemDiv.querySelector('.tuika-month');
+                    const fromMonth = itemDiv.querySelector('.tuika-from-month-input');
                     const meigaraInput = itemDiv.querySelector('.tuika-meigara');
                     const amountInput = itemDiv.querySelector('.tuika-amount');
 
-                    const year = parseInt(yearInput.value, 10);
-                    const month = parseInt(monthInput.value, 10);
                     const meigara = meigaraInput.value;
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10); // カンマを削除して数値に変換
                     
-                    const totalMonths = year * 12 + (month - 1); // 0-11の月に変換
-
-                    if (isNaN(year) || isNaN(month) || isNaN(amount) || year < 0 || month < 1 || month > 12 || amount < 0 || !meigara) {
+                    if (!fromMonth || fromMonth.value.trim() === "" || amount < 0 || !meigara) {
                         isValid = false;
-                        yearInput.classList.add('error-input');
-                        monthInput.classList.add('error-input');
+                        fromMonth.classList.add('error-input');
                         amountInput.classList.add('error-input');
                         meigaraInput.classList.add('error-input');
                         return; // forEachから抜ける
                     } else {
                         // エラーが解消された場合はスタイルを元に戻す
-                        yearInput.classList.remove('error-input');
-                        monthInput.classList.remove('error-input');
+                        fromMonth.classList.remove('error-input');
                         amountInput.classList.remove('error-input');
                         meigaraInput.classList.remove('error-input');
                     }
+
+                    const totalMonths  = compareMonthAndGetCurrent(fromMonth.value);
                     
                     tuikaData.push({
                         month: totalMonths,
                         meigara: meigara,
-                        amount: amount
+                        amount: amount,
+			fromMonth: fromMonth.value
                     });
                 });
 

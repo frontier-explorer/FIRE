@@ -19,9 +19,8 @@
                 <div class="instruction-box">
                     <p><strong>💡 入力方法:</strong></p>
                     <ul>
-                        <li><strong>適用開始時期（年/月）:</strong> 設定した税率が適用され始めるタイミングです。</li>
+                        <li><strong>適用開始時期（年月）:</strong> 設定した税率が適用され始めるタイミングです。</li>
                         <li>この税率は、**次の適用開始時期が設定されるまで**、継続して適用されます。</li>
-                        <li><strong>0年0月または0年1月:</strong> どちらも「シミュレーション開始月」を意味します。</li>
                     </ul>
                 </div>
                 <div id="taxContainer">
@@ -51,11 +50,8 @@
                 taxItem.innerHTML = `
                     <h3>税率設定 ${index + 1}</h3>
                     <div class="form-group input-group">
-                        <label>適用開始時期:</label>
-                        <input type="number" class="tax-year" placeholder="年" value="${taxData.month !== undefined ? Math.floor(taxData.month / 12) : ''}" required>
-                        <span>年</span>
-                        <input type="number" class="tax-month" placeholder="月" value="${taxData.month !== undefined ? (taxData.month % 12) : ''}" required>
-                        <span>月</span>
+			<label for="month-input">税金が適用される年・月を選択:</label>
+			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${taxData.fromMonth || ''}">
                     </div>
                     <div class="form-group input-group">
                         <label>税率（%）:</label>
@@ -105,31 +101,27 @@
                 let isValid = true;
                 
                 document.querySelectorAll('.tax-item').forEach(item => {
-                    const yearInput = item.querySelector('.tax-year');
-                    const monthInput = item.querySelector('.tax-month');
+                    const fromMonth = item.querySelector('.tax-from-month-input');
                     const rateInput = item.querySelector('.tax-rate');
                     
-                    const year = parseInt(yearInput.value, 10);
-                    const month = parseInt(monthInput.value, 10);
                     const rate = parseFloat(rateInput.value);
                     
-                    if (isNaN(year) || isNaN(month) || isNaN(rate) || year < 0 || month < 0 || month > 11 || rate < 0) {
+                    if (!fromMonth || fromMonth.value.trim() === "" || rate < 0) {
                         isValid = false;
-                        yearInput.classList.add('error-input');
-                        monthInput.classList.add('error-input');
+                        fromMonth.classList.add('error-input');
                         rateInput.classList.add('error-input');
                         return;
                     } else {
-                        yearInput.classList.remove('error-input');
-                        monthInput.classList.remove('error-input');
+                        fromMonth.classList.remove('error-input');
                         rateInput.classList.remove('error-input');
                     }
                     
-                    const totalMonths = year * 12 + month;
+                    const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
 
                     taxData.push({
                         month: totalMonths,
-                        rate: rate
+                        rate: rate,
+			fromMonth: fromMonth.value
                     });
                 });
 

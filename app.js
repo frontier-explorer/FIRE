@@ -1,22 +1,3 @@
-// --- 共通ユーティリティ関数 ---
-
-// 数値をカンマ区切りで整形する関数
-window.formatNumber = (num) => {
-    if (num === null || num === undefined) return '-';
-    // 小数点以下を丸める（ここでは四捨五入）
-    const rounded = Math.round(num);
-    return rounded.toLocaleString();
-};
-
-// 月数から 年 / 月 の文字列を生成
-window.formatMonthToYearMonth = (totalMonths) => {
-    if (totalMonths === null || totalMonths === undefined) return '---';
-    const year = Math.floor(totalMonths / 12);
-    const month = (totalMonths % 12) + 1;
-    return `${year}年${month}月`;
-};
-
-
 // アプリケーション全体のデータを保持するオブジェクト
 // 初期値を設定しておくことで、入力がない場合でもエラーを防ぎます。
 const appData = {
@@ -36,10 +17,7 @@ const appData = {
     tax: []
 };
 
-// 【追加 1/2】: appDataをグローバルスコープに公開
 window.appData = appData;
-
-// --- 【★修正箇所: ここからデータロード処理をDOMContentLoadedの外に出します★】 ---
 // app.jsがロードされた瞬間にlocalStorageから設定データを読み込み、appDataを更新する
 const storedData = localStorage.getItem('fireSimulatorData');
 if (storedData) {
@@ -55,12 +33,144 @@ if (storedData) {
         // ロードに失敗した場合はデフォルト値のまま処理を続行します。
     }
 }
-// --- 【★修正箇所: ここまでデータロード処理をDOMContentLoadedの外に出しました★】 ---
+// グローバルスコープ（app.jsなど）で利用可能にする
+window.downloadAllSettings = downloadAllSettings;
+
+
+
+// --- 共通ユーティリティ関数 ---
+
+// 数値をカンマ区切りで整形する関数
+window.formatNumber = (num) => {
+    if (num === null || num === undefined) return '-';
+    // 小数点以下を丸める（ここでは四捨五入）
+    const rounded = Math.round(num);
+    return rounded.toLocaleString();
+};
+
+//数値を３桁毎のカンマ区切りに整形する関数
+window.formatNumberInput = (event) => {
+    // 1. 入力値を取得
+    let value = event.target.value;
+    
+    // 2. 既存のカンマを全て削除
+    value = value.replace(/,/g, '');
+    
+    // 3. 数値以外、または空文字列の場合は処理を終了
+    // isNaN(value) は空文字列 "" に対して false を返すため、空文字列のチェックも必要
+    if (isNaN(value) || value === '') {
+        event.target.value = value; // 空文字列やハイフンなどをそのまま残す
+        return;
+    }
+    
+    // 4. 小数点以下があるか確認し、整数部と小数部に分ける (ただし、ここでは整数のみを想定し、小数点以下は無視)
+    // big_expense.htmlでは amount を parseInt() しているため、ここでは単純な整数処理とする。
+    
+    // 5. カンマ区切りを適用
+    const formattedValue = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // 6. 入力フィールドの値を更新
+    event.target.value = formattedValue;
+};
+
+
+// 月数から 年 / 月 の文字列を生成
+window.formatMonthToYearMonth = (totalMonths) => {
+    if (totalMonths === null || totalMonths === undefined) return '---';
+    const year = Math.floor(totalMonths / 12);
+    const month = (totalMonths % 12) + 1;
+    return `${year}年${month}月`;
+};
+
+/**
+ * 実行年月と引数の年月を比較し、条件に応じた値を返します。
+ *
+ * @param {string} targetYm - 比較対象の年月 ('yyyy-mm' 形式)
+ * @returns {number} - 実行年月 >= targetYm の場合は 1。
+ * 実行年月 < targetYm の場合は、実行年月と targetYm の月数の差を返します。
+ */
+window.compareMonthAndGetCurrent = (targetYm) =>{
+    // 実行年月の取得
+    const now = new Date();
+    // 実行年月の「年」と「月 (0-11)」を取得
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 1-12月に変換
+
+    // 引数の年月のパース
+    const parts = targetYm.split('-');
+    if (parts.length !== 2) {
+        throw new Error("引数の形式が不正です。'yyyy-mm' 形式で指定してください。");
+    }
+    const targetYear = parseInt(parts[0], 10);
+    const targetMonth = parseInt(parts[1], 10);
+
+    // 有効な数値かどうかの確認
+    if (isNaN(targetYear) || isNaN(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+        throw new Error("引数の年月が不正な値を含んでいます。");
+    }
+
+    // 実行年月を月数に変換 (基準: 0年1月)
+    const currentTotalMonths = currentYear * 12 + currentMonth;
+    // 比較対象の年月を月数に変換 (基準: 0年1月)
+    const targetTotalMonths = targetYear * 12 + targetMonth;
+
+    // 比較
+    if (currentTotalMonths >= targetTotalMonths) {
+        // 実行年月 >= yyyy-mm のとき
+        return 0;
+    } else {
+        // 実行年月 < yyyy-mm のとき
+        // 差を月数で取得 (実行年月 - yyyy-mm)
+        // 例: 実行年月=2025/10, targetYm=2025/12 の場合、1263 - 1261 = 2
+        const monthDifference = targetTotalMonths - currentTotalMonths;
+        return monthDifference;
+    }
+}
+
+/**
+ * fromDate と toDate の関係をチェックし、特定の条件で false を返す関数
+ * @param {string} fromDate - 開始日 ("yyyy-mm" 形式)
+ * @param {string} toDate - 終了日 ("yyyy-mm" 形式)
+ * @returns {boolean} - チェック条件を満たす場合は false、それ以外は true
+ */
+window.isValidDateRange = (fromDate, toDate) => {
+    // 1. fromDateが空白、かつ、toDateに年月データが代入されている
+    // trim()で前後空白を削除してからチェックします。
+    const isFromEmpty = (!fromDate || fromDate.trim() === "");
+    const isToEmpty = (!toDate || toDate.trim() === "");
+    const isToPresent = (toDate && toDate.trim() !== "");
+
+    //両方空白のとき
+    if(isFromEmpty && isToEmpty) {
+        return false;
+    }
+
+    //fromが空白なのに、toに値があるとき
+    if (isFromEmpty && isToPresent) {
+        return false;
+    }
+
+    // fromDateとtoDateの両方に値がある場合のみ、日付の大小関係をチェックします。
+    if (!isFromEmpty && isToPresent) {
+        // Dateオブジェクトを作成し、比較します。
+        // "yyyy-mm" に "-01" を加えて、月の最初の日として解釈させます。
+        const from = new Date(`${fromDate}-01`);
+        const to = new Date(`${toDate}-01`);
+
+        // 2. fromDate > toDate の日付の関係になっている
+        // 日付オブジェクトの比較は、getTime() もしくはそのままの比較で可能です。
+        if (from > to) {
+            return false;
+        }
+    }
+
+    // 上記の条件に該当しない場合は true を返します。
+    return true;
+}
+
 
 
 // --- データ保存・読み込み機能 ---
-
-// 【修正箇所: DOMContentLoadedで囲むことで、要素が存在しないエラーを回避】
 document.addEventListener('DOMContentLoaded', () => {
     // ページによってはこれらのボタンが存在しないため、存在チェックも追加
     const saveButton = document.getElementById('saveButton');
@@ -102,9 +212,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
-    // ★★★ 修正箇所: ここにあったlocalStorageからのデータ読み込みロジックは、DOMContentLoadedの外に移動したため削除します。 ★★★
-
 });
 
 
@@ -191,7 +298,3 @@ function loadAllSettings() {
     // ファイル選択ダイアログを起動
     fileInput.click();
 }
-
-// グローバルスコープ（app.jsなど）で利用可能にする
-window.downloadAllSettings = downloadAllSettings;
-// loadAllSettingsもグローバルスコープで利用可能です
