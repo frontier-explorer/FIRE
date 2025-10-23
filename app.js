@@ -1,3 +1,9 @@
+/***************************************************
+
+    アプリケーションが読み込まれた際に実行する処理等
+
+***************************************************/
+
 // アプリケーション全体のデータを保持するオブジェクト
 // 初期値を設定しておくことで、入力がない場合でもエラーを防ぎます。
 const appData = {
@@ -6,7 +12,7 @@ const appData = {
         times: 100,
         birthDate: '2000-01-01',
         cash: 0,
-	inflationRate: 2.0 // インフレ率（%）。デフォルト2.0%
+        inflationRate: 2.0 // インフレ率（%）。デフォルト2.0%
     },
     stocks: [],
     soukan: [],
@@ -16,8 +22,10 @@ const appData = {
     income: [],
     tax: []
 };
+window.appData = appData;       //Webアプリ全体のデータを一元管理するデータ構造体の宣言
 
-window.appData = appData;
+
+
 // app.jsがロードされた瞬間にlocalStorageから設定データを読み込み、appDataを更新する
 const storedData = localStorage.getItem('fireSimulatorData');
 if (storedData) {
@@ -38,8 +46,12 @@ window.downloadAllSettings = downloadAllSettings;
 
 
 
-// --- 共通ユーティリティ関数 ---
 
+/***************************************************
+
+    共通関数等
+
+***************************************************/
 // 数値をカンマ区切りで整形する関数
 window.formatNumber = (num) => {
     if (num === null || num === undefined) return '-';
@@ -52,23 +64,23 @@ window.formatNumber = (num) => {
 window.formatNumberInput = (event) => {
     // 1. 入力値を取得
     let value = event.target.value;
-    
+
     // 2. 既存のカンマを全て削除
     value = value.replace(/,/g, '');
-    
+
     // 3. 数値以外、または空文字列の場合は処理を終了
     // isNaN(value) は空文字列 "" に対して false を返すため、空文字列のチェックも必要
     if (isNaN(value) || value === '') {
         event.target.value = value; // 空文字列やハイフンなどをそのまま残す
         return;
     }
-    
+
     // 4. 小数点以下があるか確認し、整数部と小数部に分ける (ただし、ここでは整数のみを想定し、小数点以下は無視)
     // big_expense.htmlでは amount を parseInt() しているため、ここでは単純な整数処理とする。
-    
+
     // 5. カンマ区切りを適用
     const formattedValue = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    
+
     // 6. 入力フィールドの値を更新
     event.target.value = formattedValue;
 };
@@ -89,7 +101,7 @@ window.formatMonthToYearMonth = (totalMonths) => {
  * @returns {number} - 実行年月 >= targetYm の場合は 1。
  * 実行年月 < targetYm の場合は、実行年月と targetYm の月数の差を返します。
  */
-window.compareMonthAndGetCurrent = (targetYm) =>{
+window.compareMonthAndGetCurrent = (targetYm) => {
     // 実行年月の取得
     const now = new Date();
     // 実行年月の「年」と「月 (0-11)」を取得
@@ -141,7 +153,7 @@ window.isValidDateRange = (fromDate, toDate) => {
     const isToPresent = (toDate && toDate.trim() !== "");
 
     //両方空白のとき
-    if(isFromEmpty && isToEmpty) {
+    if (isFromEmpty && isToEmpty) {
         return false;
     }
 
@@ -167,8 +179,6 @@ window.isValidDateRange = (fromDate, toDate) => {
     // 上記の条件に該当しない場合は true を返します。
     return true;
 }
-
-
 
 // --- データ保存・読み込み機能 ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -222,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function downloadAllSettings(filename = 'FIRE_Settings_Export.json') {
     // 1. Local Storageから全設定データを取得
     const appDataString = localStorage.getItem('fireSimulatorData');
-    
+
     if (!appDataString) {
         alert('保存された設定データが見つかりません。まず各設定を保存してください。');
         return;
@@ -241,11 +251,11 @@ function downloadAllSettings(filename = 'FIRE_Settings_Export.json') {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
-    
+
     // DOMに追加して即座にクリックし、ダウンロードを実行
     document.body.appendChild(a);
     a.click();
-    
+
     // 後処理
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
@@ -271,7 +281,7 @@ function loadAllSettings() {
             try {
                 const content = e.target.result;
                 const newAppData = JSON.parse(content);
-                
+
                 // 必須チェック: FIREシミュレータのデータ構造か確認（最低限configがあるか）
                 if (!newAppData || typeof newAppData !== 'object' || !newAppData.config) {
                     alert('エラー: ファイルの内容が正しくありません。FIREシミュレータの設定ファイルであることを確認してください。');
@@ -280,11 +290,11 @@ function loadAllSettings() {
 
                 // Local Storageに上書き保存
                 localStorage.setItem('fireSimulatorData', JSON.stringify(newAppData));
-                
+
                 alert('設定ファイルを読み込み、Local Storageに保存しました！\n各設定画面で内容をご確認ください。');
-                
+
                 // 読み込み後、メイン画面をリロードして反映
-                window.location.reload(); 
+                window.location.reload();
 
             } catch (error) {
                 alert('ファイルの解析に失敗しました。ファイルが破損しているか、JSON形式ではありません。');
