@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,32 +14,41 @@
             margin-bottom: 20px;
             border-radius: 4px;
         }
+
         /* disabledになった入力欄を見やすくするスタイル */
-        .stock-item input:disabled, .stock-item select:disabled { /* selectにも適用 */
+        .stock-item input:disabled,
+        .stock-item select:disabled {
+            /* selectにも適用 */
             background-color: #e9ecef;
             cursor: not-allowed;
         }
+
         .meigara-group {
             display: flex;
             gap: 10px;
             align-items: flex-end;
         }
-        .meigara-group > div {
+
+        .meigara-group>div {
             flex: 1;
         }
+
         .meigara-group label {
             width: auto;
             margin-right: 0;
         }
+
         /* 自由入力欄の初期非表示スタイル */
         .custom-account-type-group {
             margin-top: 5px;
         }
+
         .custom-account-type-group input {
             width: 100%;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -49,7 +59,7 @@
         <main>
             <div class="input-section">
                 <h2>保有銘柄一覧</h2>
-                
+
                 <div class="instruction-box">
                     <p>💡 <strong>リターンとボラティリティの注意点</strong></p>
                     <ul>
@@ -58,15 +68,15 @@
                         <li>**単位口数、現在の価額、期待リターン、ボラティリティ** は、**ベース銘柄名**が同じであれば、**自動的に同期され、最初の項目以外は入力できません。**</li>
                     </ul>
                 </div>
-                
+
                 <div id="stocksContainer"> </div>
-		<br>
+                <br>
                 <div class="form-actions">
-                    <button id="addStockBtn" type="button"  class="nav-button">銘柄を追加</button>
+                    <button id="addStockBtn" type="button" class="nav-button">銘柄を追加</button>
                     <button id="saveStocksBtn" class="save-button">設定を保存</button>
                 </div>
             </div>
-            
+
             <div class="back-link">
                 <a href="index.html" class="nav-button">メイン画面に戻る</a>
             </div>
@@ -116,7 +126,7 @@
             // 自由入力の値もここから抽出する
             const parseFullMeigara = (fullMeigara) => {
                 if (!fullMeigara) return { MeigaraName: '', AccountType: '', CustomAccountValue: '' };
-                
+
                 const match = fullMeigara.match(/^(.*)＜([^＞]+)＞$/);
                 if (!match) {
                     return { MeigaraName: fullMeigara.trim(), AccountType: '', CustomAccountValue: '' };
@@ -124,7 +134,7 @@
 
                 const meigaraName = match[1].trim();
                 const accountTypeInStorage = match[2].trim();
-                
+
                 // 格納されている口座種別が、固定リストに含まれているかチェック
                 if (ACCOUNT_TYPES.includes(accountTypeInStorage) && accountTypeInStorage !== '自由入力') {
                     // 固定リストに含まれる場合は、そのままAccountTypeとして返す
@@ -151,7 +161,7 @@
                     customInput.required = true;
                     // ロード時の初期値を設定
                     if (initialValue) {
-                         customInput.value = initialValue;
+                        customInput.value = initialValue;
                     }
                 } else {
                     customGroup.style.display = 'none';
@@ -159,18 +169,18 @@
                     customInput.required = false;
                 }
             };
-            
+
             // 入力制限（disabled）の状態を更新する関数
             const updateInputRestriction = () => {
                 const stockItems = document.querySelectorAll('.stock-item');
                 const firstBaseMeigaraMap = new Map(); // Key: ベース銘柄名, Value: 最初に出現したアイテムのインデックス
-                
+
                 stockItems.forEach((item, index) => {
                     const baseMeigara = item.querySelector('.base-meigara-name').value;
-                    
+
                     // 同期対象の入力欄をすべて取得
                     const syncInputs = item.querySelectorAll('.synchronized-input');
-                    
+
                     if (!baseMeigara) {
                         syncInputs.forEach(input => input.disabled = false);
                         return;
@@ -181,7 +191,7 @@
                         syncInputs.forEach(input => input.disabled = false);
                     } else {
                         syncInputs.forEach(input => input.disabled = true);
-                        
+
                         // 【同期処理】無効化する前に、最初の銘柄の値を取得して強制的に同期する
                         const firstItemIndex = firstBaseMeigaraMap.get(baseMeigara);
                         const firstItem = stockItems[firstItemIndex];
@@ -208,14 +218,14 @@
                 if (!baseMeigara) return;
                 if (changedInput.disabled) return;
 
-                let newValue = isNumeric 
+                let newValue = isNumeric
                     ? (changedInput.type === 'text' ? changedInput.value.replace(/,/g, '') : changedInput.value)
                     : changedInput.value;
-                
+
                 // 同じベース銘柄を持つすべての入力フィールドを更新
                 document.querySelectorAll('.stock-item').forEach(item => {
                     const itemBaseMeigara = item.querySelector('.base-meigara-name').value;
-                    
+
                     if (itemBaseMeigara === baseMeigara) {
                         const targetInput = item.querySelector(`[data-sync-field="${fieldType}"]`);
                         if (targetInput && targetInput !== changedInput) {
@@ -228,7 +238,7 @@
                         }
                     }
                 });
-                
+
                 // 変更元の入力欄にカンマフォーマットを再適用 (数値入力の場合)
                 if (changedInput.type === 'text' && isNumeric) {
                     changedInput.value = newValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -239,7 +249,7 @@
             const setupStockItemListeners = (stockItem) => {
                 const baseMeigaraInput = stockItem.querySelector('.base-meigara-name');
                 const accountTypeSelect = stockItem.querySelector('.account-type');
-                
+
                 // 銘柄名変更時や口座種別変更時に制限状態を更新
                 baseMeigaraInput.addEventListener('input', updateInputRestriction);
                 accountTypeSelect.addEventListener('change', () => {
@@ -251,7 +261,7 @@
                 stockItem.querySelectorAll('.synchronized-input').forEach(input => {
                     input.addEventListener('input', synchronizeInputs);
                 });
-                
+
                 // 数値入力のカンマフォーマットリスナーを設定
                 stockItem.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
                     input.addEventListener('input', formatNumberInput);
@@ -262,7 +272,7 @@
             const createStockItem = (index, stockData = {}) => {
                 const stockItem = document.createElement('div');
                 stockItem.classList.add('stock-item');
-                
+
                 // 既存データから MeigaraName, AccountType, CustomAccountValue を分離
                 const { MeigaraName: baseMeigara, AccountType: accountType, CustomAccountValue: customAccountValue } = parseFullMeigara(stockData.Meigara);
 
@@ -272,12 +282,12 @@
                     // 数値として保存されているものをtoLocaleStringでカンマ区切りにする
                     return value !== undefined && value !== null && !isNaN(value) ? value.toLocaleString() : '';
                 };
-                
+
                 // 口座種別オプションを生成
-                const accountOptions = ACCOUNT_TYPES.map(type => 
+                const accountOptions = ACCOUNT_TYPES.map(type =>
                     `<option value="${type}" ${type === accountType ? 'selected' : ''}>${type}</option>`
                 ).join('');
-                
+
                 // 自由入力欄の初期表示状態を決定
                 const isCustomAccount = accountType === '自由入力';
                 const customInputDisplay = isCustomAccount ? 'block' : 'none';
@@ -329,22 +339,22 @@
                         <input type="number" step="0.01" class="volatility-input synchronized-input" data-sync-field="Volatility" value="${stockData.Volatility || ''}" required>
                     </div>
                     <div class="form-group tax-start-group">
-			<label for="month-input">税金開始時期（年月）:</label>
-			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${stockData.fromMonth || ''}">
+            			<label for="month-input">税金開始時期（年月）:</label>
+            			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${stockData.fromMonth || ''}">
                         <p style="font-size: 12px; color: #888; margin-left: 10px;">
-                            空欄: 生涯無税<br>
+                            新NISA成長・新NISA積み立て:空欄にしてください。<br>
                         </p>
                     </div>
 
                     <button type="button" class="remove-stock-btn">この銘柄を削除</button>
                 `;
-                
+
                 stockItem.querySelector('.remove-stock-btn').addEventListener('click', () => {
                     stockItem.remove();
                     updateStockNumbers();
                     updateInputRestriction(); // 削除後も制限状態を更新
                 });
-                
+
                 // 新しいアイテムにリスナーを設定
                 setupStockItemListeners(stockItem);
                 // ロード時の初期表示制御
@@ -384,7 +394,7 @@
                 updateInputRestriction(); // 追加後も制限状態を更新
             };
             addStockBtn.addEventListener('click', () => addStock());
-            
+
             saveStocksBtn.addEventListener('click', () => {
                 const stocksData = [];
                 let isValid = true;
@@ -393,9 +403,9 @@
                     const accountTypeSelect = item.querySelector('.account-type');
                     const selectedAccountType = accountTypeSelect.value.trim();
                     const customAccountInput = item.querySelector('.custom-account-type-input');
-                    
+
                     let finalAccountType;
-                    
+
                     // 最終的に保存する口座種別を決定
                     if (selectedAccountType === '自由入力') {
                         // 「自由入力」が選択されている場合は、カスタム入力欄の値を使用
@@ -422,10 +432,10 @@
                     const tani = parseInt(taniValue.replace(/,/g, ''), 10);
                     const currentValuePerUnit = parseInt(currentValueValue.replace(/,/g, ''), 10);
                     const averagePrice = parseInt(averagePriceValue.replace(/,/g, ''), 10);
-                    
+
                     let taxStartYear = null;
                     let taxStartMonth = null;
-                    
+
                     // バリデーションチェック
                     if (!baseMeigaraName || !finalAccountType || isNaN(kuchisu) || isNaN(tani) || isNaN(currentValuePerUnit) || isNaN(averagePrice) || isNaN(parseFloat(returnRate)) || isNaN(parseFloat(volatility)) || kuchisu < 0 || tani <= 0 || currentValuePerUnit <= 0 || averagePrice <= 0 || parseFloat(returnRate) < -100 || parseFloat(volatility) < 0) {
                         alert('全ての項目に正しい数値を入力/選択してください。銘柄名または口座種別が空欄です。');
@@ -433,13 +443,18 @@
                         return;
                     }
 
-		    let w_fromMonth = null;
-		    if(fromMonth.value.trim() !== ""){
-			w_fromMonth = fromMonth.value.trim();
-			let w = parseInt(compareMonthAndGetCurrent(w_fromMonth),10);
-			taxStartYear = Math.floor(w / 12);
-			taxStartMonth = (w % 12);
-		    }
+                    let w_fromMonth = null;
+                    if (fromMonth.value.trim() !== "") {
+                        w_fromMonth = fromMonth.value.trim();
+                        let w = parseInt(compareMonthAndGetCurrent(w_fromMonth), 10);
+                        taxStartYear = Math.floor(w / 12);
+                        taxStartMonth = (w % 12);
+                    }
+                    //新NISA以外で、税金開始年月日が入っていないときは、最初から税金を適用
+                    else if(finalAccountType !== "積立(新NISA)" && finalAccountType !== "成長(新NISA)"){
+                        taxStartYear = 0;
+                        taxStartMonth = 0;
+                    }
 
                     stocksData.push({
                         Meigara: fullMeigara, // simulate.htmlが期待する形式
@@ -449,9 +464,9 @@
                         AveragePrice: averagePrice,
                         Return: parseFloat(returnRate),
                         Volatility: parseFloat(volatility),
-                        TaxStartYear: taxStartYear, 
+                        TaxStartYear: taxStartYear,
                         TaxStartMonth: taxStartMonth,
-			fromMonth: w_fromMonth
+                        fromMonth: w_fromMonth
                     });
                 });
 
@@ -463,7 +478,7 @@
                 appData.stocks = stocksData;
                 localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
                 alert('保有証券の設定が保存されました！');
-                
+
                 // 保存後、再表示と再制限
                 loadStocks();
             });
@@ -472,4 +487,5 @@
         });
     </script>
 </body>
+
 </html>
