@@ -544,26 +544,26 @@
             for (const tui of appData.tuika) {
                 //対象外を外す
                 //対象の期間ではないとき対象外とする
-                if(tui.month > monthIndex || tui.toMonth_totalMonths < monthIndex) {
+                if (tui.month > monthIndex || tui.toMonth_totalMonths < monthIndex) {
                     continue;
                 }
                 //パターンごとの処理
                 //１回かつ対象月なら対象
-                if(tui.pattern === "１回" && tui.month === monthIndex){
+                if (tui.pattern === "１回" && tui.month === monthIndex) {
                     tuikaEvents.push(tui);
                     continue;
                 }
                 //各月なら対象。期間チェックはすでに済んでいるので省略
-                if(tui.pattern === "各月"){
+                if (tui.pattern === "各月") {
                     tuikaEvents.push(tui);
                     continue;
                 }
                 //各年のパターン
                 //シミュレーション上の年月　から　追加投資開始年月の年月を引いて、１２で割り切れれば対象年月となる
-                if(tui.pattern === "各年"){
+                if (tui.pattern === "各年") {
                     const w = monthIndex - tui.month;
                     //１２で割り切れないときは対象外
-                    if(w % 12 === 0){
+                    if (w % 12 === 0) {
                         tuikaEvents.push(tui);
                         continue;
                     }
@@ -984,22 +984,22 @@
         let totalAssetChartInstance = null;
 
         //すべての処理の前に登録データを整理する
-        function initializeDatas(){
-                //追加投資の終了年月をシミュレーションの年月に変換する
-                const appDatas = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
-                let new_data = [];
-                for(let w of appDatas.tuika){
-                    if(w.pattern === "１回"){
-                        w.toMonth_totalMonths = w.month;
-                    }
-                    else{
-                        //終了年月をシミュレーションの年月に変換する
-                        w.toMonth_totalMonths = compareMonthAndGetCurrent(w.toMonth);                        
-                    }
-                    new_data.push(w);
+        function initializeDatas() {
+            //追加投資の終了年月をシミュレーションの年月に変換する
+            const appDatas = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+            let new_data = [];
+            for (let w of appDatas.tuika) {
+                if (w.pattern === "１回") {
+                    w.toMonth_totalMonths = w.month;
                 }
-                appDatas.tuika = new_data;
-                localStorage.setItem('fireSimulatorData', JSON.stringify(appDatas));
+                else {
+                    //終了年月をシミュレーションの年月に変換する
+                    w.toMonth_totalMonths = compareMonthAndGetCurrent(w.toMonth);
+                }
+                new_data.push(w);
+            }
+            appDatas.tuika = new_data;
+            localStorage.setItem('fireSimulatorData', JSON.stringify(appDatas));
         }
 
         // ... (DOM操作と表示制御のコードは変更なし) ...
@@ -1131,9 +1131,7 @@
                     rowHtml += `<td>${window.formatNumber(entry.tuika)}</td>`;
 
                     // (8) 期末金融資産額 - ( )をつけた対前月比の差を記載
-
                     const investmentChange = entry.endOfPeriodAssets - (entry.transferAssets + entry.tuika);
-
                     const assetChangeText = `${window.formatNumber(entry.endOfPeriodAssets)}<br>(${window.formatNumber(investmentChange)})`;
                     rowHtml += `<td>${assetChangeText}</td>`;
 
@@ -1189,18 +1187,35 @@
                 // 新しい折れ線グラフを作成
                 totalAssetChartInstance = new Chart(ctx, {
                     type: 'line',
-                    data: {
+data: {
                         labels: labels,
-                        datasets: [{
-                            label: '(9) 総資産の推移',
-                            data: data,
-                            borderColor: result.success ? '#3498db' : '#e74c3c', // 成功:青, 失敗:赤
-                            backgroundColor: result.success ? 'rgba(52, 152, 219, 0.1)' : 'rgba(231, 76, 60, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            tension: 0.1,
-                            fill: true
-                        }]
+                        datasets: [
+                            // 線形軸（左）にプロットするデータセット (必要に応じて残す)
+                            {
+                                label: '(9) 総資産の推移 (線形)',
+                                data: data,
+                                yAxisID: 'y', // 左側の軸を指定
+                                borderColor: result.success ? '#3498db' : '#e74c3c',
+                                backgroundColor: result.success ? 'rgba(52, 152, 219, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                tension: 0.1,
+                                fill: false // 2つのプロットが重なるため、塗りつぶしはしない方が見やすい
+                            },
+                            // 対数軸（右）にプロットするデータセット (色は線形軸と変える)
+                            {
+                                label: '(9) 総資産の推移 (対数)',
+                                data: data,
+                                yAxisID: 'y2', // ★右側の対数軸を指定
+                                borderColor: 'rgba(155, 89, 182, 1)', // 対数軸用に色を変更
+                                backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                tension: 0.1,
+                                fill: false,
+                                hidden: false
+                            }
+                        ]
                     },
                     options: {
                         responsive: true,
@@ -1225,15 +1240,31 @@
                                     maxTicksLimit: 20
                                 }
                             },
-                            y: {
+                            y: { // 左側の通常の軸
                                 title: {
                                     display: true,
-                                    text: '総資産額'
+                                    text: '総資産額 (線形)'
                                 },
                                 beginAtZero: false,
                                 ticks: {
-                                    // 軸の目盛りを分かりやすくフォーマット
                                     callback: function (value) {
+                                        return window.formatNumber(value);
+                                    }
+                                }
+                            },
+                            y2: { // 右側の対数軸を新設
+                                type: 'logarithmic', // ★ここを 'logarithmic' に変更
+                                position: 'right', // 軸を右側に配置
+                                title: {
+                                    display: true,
+                                    text: '総資産額 (対数)'
+                                },
+                                grid: {
+                                    drawOnChartArea: false, // グラフ領域へのグリッド線描画を無効化
+                                },
+                                ticks: {
+                                    callback: function (value) {
+                                        // 対数軸の目盛りを分かりやすくフォーマット
                                         return window.formatNumber(value);
                                     }
                                 }
@@ -1277,12 +1308,7 @@
                 } else {
                     chartContainer.style.display = 'none'; // ボタン情報がない場合は非表示
                 }
-
-
-
             }
-
-
 
             /**
              * シミュレーションボタンの表示を更新
