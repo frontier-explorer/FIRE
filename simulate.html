@@ -568,7 +568,6 @@
                 //１２で割り切れないときは対象外
                 if (w % 12 === 0) {
                     tuikaEvents.push(tui);
-                    continue;
                 }
             }
 
@@ -582,7 +581,7 @@
                 const investmentAmount = tuika.amount;
 
                 if (currentCash < investmentAmount) {
-                    debugOutput(`追加投資失敗(${tuika.meigara}): 現金不足。`);
+//                    debugOutput(`追加投資失敗(${tuika.meigara}): 現金不足。`);
                     continue;
                 }
 
@@ -604,7 +603,7 @@
                     const newAveragePricePerUnit = newTotalValue / newTotalKuchisu;
                     targetStock.AveragePrice = newAveragePricePerUnit * targetStock.Tani;
                 }
-                debugOutput(`追加投資成功(${tuika.meigara}): 投資額${investmentAmount}, 購入口数${boughtKuchisu}`);
+//                debugOutput(`追加投資成功(${tuika.meigara}): 投資額${investmentAmount}, 購入口数${boughtKuchisu}`);
             }
 
             return { currentCash, monthlyTuikaInvestment };
@@ -777,7 +776,7 @@
          * モンテカルロ・シミュレーションを実行するメイン関数
          */
         function runMonteCarloSimulation(appData) {
-            debugOutput('--- シミュレーション開始 ---');
+//            debugOutput('--- シミュレーション開始 ---');
             const config = appData.config;
             const stocks = appData.stocks;
             const totalPeriods = config.period * 12;
@@ -803,11 +802,11 @@
             try {
                 L = numeric.cholesky(R);
             } catch (error) {
-                debugOutput('エラー: コレスキー分解に失敗しました。' + error.message);
+//                debugOutput('エラー: コレスキー分解に失敗しました。' + error.message);
                 alert('相関係数に矛盾等がある可能性が高いです。\nエラー: コレスキー分解に失敗しました。' + error.message);
                 return [];
             }
-            debugOutput('コレスキー分解完了。');
+//            debugOutput('コレスキー分解完了。');
 
             const inflationRate = config.inflationRate / 100; // configから取得した%を小数に変換
             // LifeCostイベントを月数順にソート
@@ -935,7 +934,7 @@
                         fireFailure = saleResult.fireFailure;
                         if (fireFailure) {
                             failureMonth = monthIndex; //ここで失敗月数を記録
-                            debugOutput(`資産枯渇によりFIRE失敗 (${yearMonthStr})`);
+//                            debugOutput(`資産枯渇によりFIRE失敗 (${yearMonthStr})`);
                         }
                     }
 
@@ -973,11 +972,11 @@
                     failureMonth: fireFailure ? failureMonth : totalPeriods,
                     history: history
                 });
-                debugOutput(`試行 #${t + 1} 完了。成功: ${!fireFailure}`);
+//                debugOutput(`試行 #${t + 1} 完了。成功: ${!fireFailure}`);
 
             }
 
-            debugOutput('--- シミュレーション完了 ---');
+//            debugOutput('--- シミュレーション完了 ---');
             return simulationResults;
         }
 
@@ -1531,7 +1530,7 @@
 
             } catch (e) {
                 summaryText.textContent = `データの読み込みまたはシミュレーション実行中にエラーが発生しました: ${e.message}`;
-                debugOutput(`致命的なエラー: ${e.stack}`);
+//                debugOutput(`致命的なエラー: ${e.stack}`);
                 document.getElementById('debug-output').style.display = 'block';
             }
         });
