@@ -547,26 +547,28 @@
                 if (tui.month > monthIndex || tui.toMonth_totalMonths < monthIndex) {
                     continue;
                 }
-                //パターンごとの処理
-                //１回かつ対象月なら対象
-                if (tui.pattern === "１回" && tui.month === monthIndex) {
-                    tuikaEvents.push(tui);
-                    continue;
-                }
+                //パターンごとの処理。処理回数が多いもの順
                 //各月なら対象。期間チェックはすでに済んでいるので省略
                 if (tui.pattern === "各月") {
                     tuikaEvents.push(tui);
                     continue;
                 }
-                //各年のパターン
-                //シミュレーション上の年月　から　追加投資開始年月の年月を引いて、１２で割り切れれば対象年月となる
-                if (tui.pattern === "各年") {
-                    const w = monthIndex - tui.month;
-                    //１２で割り切れないときは対象外
-                    if (w % 12 === 0) {
-                        tuikaEvents.push(tui);
+                //１回かつ対象月なら対象
+                if (tui.pattern === "１回"){
+                    //対象月でなければ対象外
+                    if(tui.month !== monthIndex) {
                         continue;
                     }
+                    tuikaEvents.push(tui);
+                    continue;
+                }
+                //各年のパターン
+                //シミュレーション上の年月　から　追加投資開始年月の年月を引いて、１２で割り切れれば対象年月となる
+                const w = monthIndex - tui.month;
+                //１２で割り切れないときは対象外
+                if (w % 12 === 0) {
+                    tuikaEvents.push(tui);
+                    continue;
                 }
             }
 
@@ -802,6 +804,7 @@
                 L = numeric.cholesky(R);
             } catch (error) {
                 debugOutput('エラー: コレスキー分解に失敗しました。' + error.message);
+                alert('相関係数に矛盾等がある可能性が高いです。\nエラー: コレスキー分解に失敗しました。' + error.message);
                 return [];
             }
             debugOutput('コレスキー分解完了。');
@@ -1187,7 +1190,7 @@
                 // 新しい折れ線グラフを作成
                 totalAssetChartInstance = new Chart(ctx, {
                     type: 'line',
-data: {
+                    data: {
                         labels: labels,
                         datasets: [
                             // 線形軸（左）にプロットするデータセット (必要に応じて残す)
