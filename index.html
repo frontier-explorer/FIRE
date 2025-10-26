@@ -56,11 +56,22 @@
             margin-bottom: 20px;
             background-color: #f9f9f9;
         }
+
+        .momonga-logo {
+            position: absolute; /* 親要素に対して絶対配置 */
+            left: 10px; /* 左からの距離 (例: 10%で調整) */
+            top: 95px; 
+            transform: translateY(-50%); /* 自身の高さの半分だけ上にずらして中央揃え */
+            width: 10%; /* 画像の幅を調整 */
+            height: auto; /* 縦横比を維持 */
+            z-index: 10; /* 他のコンテンツより手前に表示 */
+        }
     </style>
 </head>
 
 <body>
     <header>
+        <img src="FrontireExplorer.png" class="momonga-logo">
         <h1>FIREシミュレーション</h1>
         <p>あなたの財務データに基づき、FIRE達成の可能性をモンテカルロ・シミュレーションで検証します。</p>
     </header>
@@ -110,7 +121,11 @@
         </div>
 
     </main>
-
+    <div>
+        <p><a href="FrontireExplorer.png" download>元の画像ファイル (FrontireExplorer.png)</a></p>
+        <p><a href="FrontireExplorer.sig">FrontireExplorerアイコン(画面左上の画像です)への署名(SHA256)</href></a>
+        <p><a href="public.pem">著者の公開鍵</href></p>
+    </div>
 
 
     <script src="app.js"></script>
