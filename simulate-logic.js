@@ -763,7 +763,6 @@ document.addEventListener('DOMContentLoaded', () => {
             th1.colSpan = "4";
             th1.textContent = `銘柄${String.fromCharCode(65 + index)}`
 
-            //銘柄をクリックすると、イベントが発動するようにする。
             th1.classList.add('meigara-header-group');
             th1.classList.add('collapsed-detail-text');
             th1.dataset.meigaraIndex = index; // 0, 1, 2, ... のインデックス
@@ -773,21 +772,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // 2行目: 詳細項目 (4つのセル)
             const th2_rate = document.createElement('th');
             th2_rate.textContent = '利率％';
+            th2_rate.classList.add('meigara-header-group');
             th2_rate.classList.add('collapsed-detail-text');
             headerRow2.appendChild(th2_rate);
 
             const th2_value = document.createElement('th');
             th2_value.textContent = '資産額';
+            th2_value.classList.add('meigara-header-group');
             th2_value.classList.add('collapsed-detail-text');
             headerRow2.appendChild(th2_value);
 
             const th2_kuchisu = document.createElement('th');
             th2_kuchisu.textContent = '保有口数';
+            th2_kuchisu.classList.add('meigara-header-group');
             th2_kuchisu.classList.add('collapsed-detail-text');
             headerRow2.appendChild(th2_kuchisu);
 
             const th2_price = document.createElement('th');
             th2_price.innerHTML = '現在/<br>平均<br>(税額/1口)';
+            th2_price.classList.add('meigara-header-group');
             th2_price.classList.add('collapsed-detail-text');
             headerRow2.appendChild(th2_price);
         });
@@ -801,7 +804,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 凡例の設定
         const legendHtml = '<h3>凡例</h3>';
         meigaraLegend.innerHTML = legendHtml + stocks.map((s, i) =>
-            '<button onclick="showHideStocksInfo(' + `${i}` + ',this)">' + `銘柄${String.fromCharCode(65 + i)}: ${s.Meigara}` + '</button>'
+            '<button class="hanrei_button" onclick="showHideStocksInfo(' + `${i}` + ',this)">' + `銘柄${String.fromCharCode(65 + i)}: ${s.Meigara}` + '</button>'
         ).join('<br><br>') + '<BR><BR>※　凡例の「銘柄A、銘柄B・・・」をクリックすると、各銘柄の推移の表示・非表示を切り替えられます。<br>';
     }
 
@@ -1035,6 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.textContent = result.trialId;
 
             button.addEventListener('click', () => {
+                showHideStocksInfo(-1,null);        //ボタンを押した直後は銘柄の詳細は非表示
                 displaySimulationDetail(index, button);
             });
 
@@ -1237,6 +1241,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
 //シミュレーション詳細のテーブルの各銘柄の資産状況の推移情報の表示・非表示処理
 function showHideStocksInfo(meigaraIndex, event) {
+    //ボタンが押された直後は銘柄情報は非表示
+    if(meigaraIndex === -1){
+        let elements = document.querySelectorAll('.meigara-header-group');
+        elements.forEach(element => {
+            element.classList.add('collapsed-detail-text');
+        });
+        elements = document.querySelectorAll('.hanrei_button');
+        elements.forEach(element => {
+            element.classList.remove('showed-detail-button');
+        });
+        return;
+    }
+
     //押した銘柄のボタンの状態変更
     event.classList.toggle('showed-detail-button');
 
