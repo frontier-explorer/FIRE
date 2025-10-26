@@ -1,46 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>収入設定</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>収入設定</h1>
-            <p>毎月の収入イベントを設定します。</p>
-        </header>
-
-        <main>
-            <div class="input-section">
-                <h2>収入イベント一覧</h2>
-                <div class="instruction-box">
-                    <p><strong>💡 入力方法:</strong></p>
-                    <ul>
-                        <li><strong>収入が発生する年・月:</strong> 収入が発生し始めるタイミングを設定します。</li>
-                        <li><strong>収入が終了する年・月:</strong> 収入が終了するタイミングを設定します。</li>
-                        <li><strong>収入が終了する年・月が空欄:</strong> 収入が発生する年・月からシミュレーション期間の終わりまで、毎月収入が発生し続けます。</li>
-                    </ul>
-                </div>
-                <div id="incomeContainer"> </div>
-		<br>
-                <div class="form-actions">
-                    <button id="addIncomeBtn" type="button"  class="nav-button">収入を追加</button>
-                    <button id="saveIncomeBtn" class="save-button">設定を保存</button>
-                </div>
-            </div>
-
-            <div class="back-link">
-                <a href="index.html" class="nav-button">メイン画面に戻る</a>
-            </div>
-        </main>
-    </div>
-
-    <script src="app.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>収入設定</title><link rel="stylesheet"href="style.css"><div class="container"><header><h1>収入設定</h1><p>毎月の収入イベントを設定します。</header><main><div class="input-section"><h2>収入イベント一覧</h2><div class="instruction-box"><p><strong>💡 入力方法:</strong><ul><li><strong>収入が発生する年・月:</strong> 収入が発生し始めるタイミングを設定します。<li><strong>収入が終了する年・月:</strong> 収入が終了するタイミングを設定します。<li><strong>収入が終了する年・月が空欄:</strong> 収入が発生する年・月からシミュレーション期間の終わりまで、毎月収入が発生し続けます。</ul></div><div id="incomeContainer"></div><br><div class="form-actions"><button id="addIncomeBtn"type="button"class="nav-button">収入を追加</button> <button id="saveIncomeBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
             const incomeContainer = document.getElementById('incomeContainer');
             const addIncomeBtn = document.getElementById('addIncomeBtn');
             const saveIncomeBtn = document.getElementById('saveIncomeBtn');
@@ -167,7 +125,4 @@
             });
 
             loadIncomes();
-        });
-    </script>
-</body>
-</html>
+        });</script>

@@ -1,84 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>生活費</title>
-    <link rel="stylesheet" href="style.css">
-    <style>
-        .life-cost-item {
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .life-cost-item h3 {
-            margin-top: 0;
-            color: #34495e;
-        }
-        .life-cost-item .remove-btn {
-            background-color: #95a5a6;
-            margin-top: 10px;
-            font-size: 14px;
-            padding: 8px 15px;
-        }
-        .input-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .input-group label {
-            margin-bottom: 0;
-            white-space: nowrap;
-        }
-        .input-group input {
-            width: auto;
-            flex-grow: 1;
-        }
-        .instruction-box {
-            background-color: #f0f8ff;
-            border-left: 5px solid #3498db;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 4px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>生活費</h1>
-            <p>毎月の生活費を設定します。</p>
-        </header>
-
-        <main>
-            <div class="input-section">
-                <h2>生活費イベント一覧</h2>
-                <div class="instruction-box">
-                    <p><strong>💡 入力方法:</strong></p>
-                    <ul>
-                        <li><strong>適用開始時期（年/月）:</strong> 設定した生活費が適用され始めるタイミングです。</li>
-                        <li>この生活費は、**次の適用開始時期が設定されるまで**、継続して適用されます。</li>
-                        <li><strong>0年0月または0年1月:</strong> どちらも「シミュレーション開始月」を意味します。</li>
-                    </ul>
-                </div>
-                <div id="lifeCostContainer"> </div>
-		<br>
-                <div class="form-actions">
-                    <button id="addLifeCostBtn" type="button"  class="nav-button">生活費を追加</button>
-                    <button id="saveLifeCostBtn" class="save-button">設定を保存</button>
-                </div>
-            </div>
-
-            <div class="back-link">
-                <a href="index.html" class="nav-button">メイン画面に戻る</a>
-            </div>
-        </main>
-    </div>
-
-    <script src="app.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>生活費</title><link rel="stylesheet"href="style.css"><style>.life-cost-item{padding:15px;border:1px solid #ddd;border-radius:8px;margin-bottom:20px}.life-cost-item h3{margin-top:0;color:#34495e}.life-cost-item .remove-btn{background-color:#95a5a6;margin-top:10px;font-size:14px;padding:8px 15px}.input-group{display:flex;align-items:center;gap:10px}.input-group label{margin-bottom:0;white-space:nowrap}.input-group input{width:auto;flex-grow:1}.instruction-box{background-color:#f0f8ff;border-left:5px solid #3498db;padding:15px;margin-bottom:20px;border-radius:4px}</style><div class="container"><header><h1>生活費</h1><p>毎月の生活費を設定します。</header><main><div class="input-section"><h2>生活費イベント一覧</h2><div class="instruction-box"><p><strong>💡 入力方法:</strong><ul><li><strong>適用開始時期（年/月）:</strong> 設定した生活費が適用され始めるタイミングです。<li>この生活費は、**次の適用開始時期が設定されるまで**、継続して適用されます。<li><strong>0年0月または0年1月:</strong> どちらも「シミュレーション開始月」を意味します。</ul></div><div id="lifeCostContainer"></div><br><div class="form-actions"><button id="addLifeCostBtn"type="button"class="nav-button">生活費を追加</button> <button id="saveLifeCostBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
             const lifeCostContainer = document.getElementById('lifeCostContainer');
             const addLifeCostBtn = document.getElementById('addLifeCostBtn');
             const saveLifeCostBtn = document.getElementById('saveLifeCostBtn');
@@ -186,7 +106,4 @@
             });
 
             loadLifeCost();
-        });
-    </script>
-</body>
-</html>
+        });</script>
