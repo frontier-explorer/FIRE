@@ -9,12 +9,12 @@
                 incomeItem.innerHTML = `
                     <h3>収入イベント ${index + 1}</h3>
                     <div class="form-group input-group">
-			<label for="month-input">収入が発生する年・月を選択:</label>
-			<input type="month" class="income-from-month-input" name="selected-from-month"  value="${incomeData.fromMonth || ''}">
+            			<label for="month-input">収入が発生する年・月を選択:</label>
+            			<input type="month" class="income-from-month-input" name="selected-from-month"  value="${incomeData.fromMonth || ''}">
                     </div>
                     <div class="form-group input-group">
-			<label for="month-input">収入が終了する年・月を選択(最終の収集が発生する年月日):</label>
-			<input type="month" class="income-to-month-input" name="selected-to-month"  value="${incomeData.toMonth || ''}">
+            			<label for="month-input">収入が終了する年・月を選択(最終の収集が発生する年月日):</label>
+            			<input type="month" class="income-to-month-input" name="selected-to-month"  value="${incomeData.toMonth || ''}">
                     </div>
                     <div class="form-group">
                         <label>収入額（円/月）:</label>
@@ -26,7 +26,7 @@
                     </div>
                     <button type="button" class="remove-btn">削除</button>
                 `;
-                
+
                 incomeItem.querySelector('.remove-btn').addEventListener('click', () => {
                     incomeItem.remove();
                     updateIncomeNumbers();
@@ -76,7 +76,7 @@
             saveIncomeBtn.addEventListener('click', () => {
                 const incomeData = [];
                 let isValid = true;
-                
+
                 document.querySelectorAll('.income-item').forEach(item => {
                     const fromMonth = item.querySelector('.income-from-month-input');
                     const toMonth = item.querySelector('.income-to-month-input');
@@ -85,23 +85,23 @@
 
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
                     const reason = reasonInput.value;
-                    
-		    if(isValidDateRange(fromMonth.value,toMonth.value) == false){
+
+                    if (isValidDateRange(fromMonth.value, toMonth.value) == false) {
                         alert('開始年月は必須です。終了年月は空白もしくは、開始年月と同じかそれ以降を入力してください。');
                         isValid = false;
                         fromMonth.classList.add('error-input');
                         toMonth.classList.add('error-input');
                         return;
-		   }
+                    }
                     fromMonth.classList.remove('error-input');
                     toMonth.classList.remove('error-input');
 
-		    const startTotalMonths = compareMonthAndGetCurrent(fromMonth.value);
-		    let endTotalMonths = null;
-		    let toMonthDate = null;
-		    if( !toMonth || toMonth.value.trim() !== ""){
-		    	endTotalMonths = compareMonthAndGetCurrent(toMonth.value);
-			toMonthDate = toMonth.value;
+                    const startTotalMonths = compareMonthAndGetCurrent(fromMonth.value);
+                    let endTotalMonths = null;
+                    let toMonthDate = null;
+                    if (!toMonth || toMonth.value.trim() !== "") {
+                        endTotalMonths = compareMonthAndGetCurrent(toMonth.value);
+                        toMonthDate = toMonth.value;
                     }
 
                     incomeData.push({
@@ -109,8 +109,8 @@
                         endTotalMonths: endTotalMonths,
                         amount: amount,
                         reason: reason,
-			fromMonth:fromMonth.value,
-			toMonth:toMonthDate
+                        fromMonth: fromMonth.value,
+                        toMonth: toMonthDate
                     });
                 });
 

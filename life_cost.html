@@ -9,8 +9,8 @@
                 lifeCostItem.innerHTML = `
                     <h3>生活費設定 ${index + 1}</h3>
                     <div class="form-group input-group">
-			<label for="month-input">収入が発生する年・月を選択:</label>
-			<input type="month" class="life-cost-from-month-input" name="selected-from-month"  value="${lifeCostData.fromMonth || ''}">
+            			<label for="month-input">収入が発生する年・月を選択:</label>
+            			<input type="month" class="life-cost-from-month-input" name="selected-from-month"  value="${lifeCostData.fromMonth || ''}">
                     </div>
                     <div class="form-group input-group">
                         <label>金額（円/月）:</label>
@@ -18,7 +18,7 @@
                     </div>
                     <button type="button" class="remove-btn">削除</button>
                 `;
-                
+
                 lifeCostItem.querySelector('.remove-btn').addEventListener('click', () => {
                     lifeCostItem.remove();
                     updateLifeCostNumbers();
@@ -68,14 +68,14 @@
             saveLifeCostBtn.addEventListener('click', () => {
                 const lifeCosts = [];
                 let isValid = true;
-                
+
                 document.querySelectorAll('.life-cost-item').forEach(item => {
                     const fromMonth = item.querySelector('.life-cost-from-month-input');
                     const amountInput = item.querySelector('.life-cost-amount');
-                    
+
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
-                   
-                    if (fromMonth.value.trim() === ""  || amount < 0) {
+
+                    if (fromMonth.value.trim() === "" || amount < 0) {
                         isValid = false;
                         fromMonth.classList.add('error-input');
                         amountInput.classList.add('error-input');
@@ -84,13 +84,13 @@
                         fromMonth.classList.remove('error-input');
                         amountInput.classList.remove('error-input');
                     }
-                    
+
                     const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
 
                     lifeCosts.push({
                         month: totalMonths,
                         amount: amount,
-			fromMonth: fromMonth.value
+                        fromMonth: fromMonth.value
                     });
                 });
 

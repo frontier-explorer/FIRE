@@ -364,7 +364,7 @@
                         taxStartMonth = (w % 12);
                     }
                     //新NISA以外で、税金開始年月日が入っていないときは、最初から税金を適用
-                    else if(finalAccountType !== "積立(新NISA)" && finalAccountType !== "成長(新NISA)"){
+                    else if (finalAccountType !== "積立(新NISA)" && finalAccountType !== "成長(新NISA)") {
                         taxStartYear = 0;
                         taxStartMonth = 0;
                     }

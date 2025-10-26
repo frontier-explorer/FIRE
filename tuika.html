@@ -131,10 +131,10 @@
                         return; // forEachから抜ける
                     }
                     //投資が１回限りではないときのチェック
-                    if(checkedInput.value !== "１回" && toMonth.value !== ""){
+                    if (checkedInput.value !== "１回" && toMonth.value !== "") {
                         const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
                         const toMonth_totalMonths = compareMonthAndGetCurrent(toMonth.value);
-                        if(totalMonths > toMonth_totalMonths){
+                        if (totalMonths > toMonth_totalMonths) {
                             isValid = false;
                             fromMonth.classList.add('error-input');
                             toMonth.classList.add('error-input');
@@ -152,7 +152,7 @@
                     //追加投資の開始年月と、終了年月をシミュレーション上のトータル月数に変換する
                     const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
                     let toMonth_value = toMonth.value !== "" ? toMonth.value : null;
-                    if(checkedInput.value === "１回"){
+                    if (checkedInput.value === "１回") {
                         //１回というのであれば、開始年月と同じに強制的にする
                         toMonth_value = fromMonth.value;
                     }

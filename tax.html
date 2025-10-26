@@ -9,8 +9,8 @@
                 taxItem.innerHTML = `
                     <h3>税率設定 ${index + 1}</h3>
                     <div class="form-group input-group">
-			<label for="month-input">税金が適用される年・月を選択:</label>
-			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${taxData.fromMonth || ''}">
+            			<label for="month-input">税金が適用される年・月を選択:</label>
+            			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${taxData.fromMonth || ''}">
                     </div>
                     <div class="form-group input-group">
                         <label>税率（%）:</label>
@@ -18,7 +18,7 @@
                     </div>
                     <button type="button" class="remove-btn">削除</button>
                 `;
-                
+
                 taxItem.querySelector('.remove-btn').addEventListener('click', () => {
                     taxItem.remove();
                     updateTaxNumbers();
@@ -33,7 +33,7 @@
                     item.querySelector('h3').textContent = `税率設定 ${index + 1}`;
                 });
             };
-            
+
             const loadTax = () => {
                 const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
                 const tax = appData.tax || [];
@@ -58,13 +58,13 @@
             saveTaxBtn.addEventListener('click', () => {
                 const taxData = [];
                 let isValid = true;
-                
+
                 document.querySelectorAll('.tax-item').forEach(item => {
                     const fromMonth = item.querySelector('.tax-from-month-input');
                     const rateInput = item.querySelector('.tax-rate');
-                    
+
                     const rate = parseFloat(rateInput.value);
-                    
+
                     if (!fromMonth || fromMonth.value.trim() === "" || rate < 0) {
                         isValid = false;
                         fromMonth.classList.add('error-input');
@@ -74,13 +74,13 @@
                         fromMonth.classList.remove('error-input');
                         rateInput.classList.remove('error-input');
                     }
-                    
+
                     const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
 
                     taxData.push({
                         month: totalMonths,
                         rate: rate,
-			fromMonth: fromMonth.value
+                        fromMonth: fromMonth.value
                     });
                 });
 
