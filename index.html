@@ -360,9 +360,9 @@
             // 3. <img>要素を取得する（例: header内の最初の子の<img>）
             const imageElement = document.querySelector('header img');
             if (h1Element && imageElement) {
-                imageElement.style.height = `${h1Element.getBoundingClientRect().height*0.9}px`;
+                imageElement.style.height = `${h1Element.getBoundingClientRect().height*0.7}px`;
                 imageElement.style.width = 'auto'; 
-                imageElement.style.top = `${h1Element.getBoundingClientRect().top + h1Element.getBoundingClientRect().height}px`;
+                imageElement.style.top = `${h1Element.getBoundingClientRect().top + h1Element.getBoundingClientRect().height - 50}px`;
                 imageElement.style.left = `${h1Element.getBoundingClientRect().width/2}px`;
             }
         }
