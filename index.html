@@ -124,6 +124,11 @@
 
     <script src="app.js"></script>
     <script>
+        window.addEventListener("orientationchange", function() {
+            //ロゴのサイズの変更
+            convertLogoSize();    
+        });
+
         document.addEventListener('DOMContentLoaded', () => {
             //ロード時に文字としての年月を、実行時のシミュレーションの年月に変換する。
             InitializeDataConvert();
@@ -362,8 +367,8 @@
             if (h1Element && imageElement) {
                 imageElement.style.height = `${h1Element.getBoundingClientRect().height*0.7}px`;
                 imageElement.style.width = 'auto'; 
-                imageElement.style.top = `${h1Element.getBoundingClientRect().top + h1Element.getBoundingClientRect().height - 50}px`;
-                imageElement.style.left = `${h1Element.getBoundingClientRect().width/2}px`;
+                imageElement.style.top = `${h1Element.getBoundingClientRect().top+2}px`;
+                imageElement.style.left = `${h1Element.getBoundingClientRect().left+2}px`;
             }
         }
     </script>
