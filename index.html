@@ -59,11 +59,6 @@
 
         .momonga-logo {
             position: absolute; /* 親要素に対して絶対配置 */
-            left: 10px; /* 左からの距離 (例: 10%で調整) */
-            top: 95px; 
-            transform: translateY(-50%); /* 自身の高さの半分だけ上にずらして中央揃え */
-            width: 10%; /* 画像の幅を調整 */
-            height: auto; /* 縦横比を維持 */
             z-index: 10; /* 他のコンテンツより手前に表示 */
         }
     </style>
@@ -76,21 +71,20 @@
         <p>あなたの財務データに基づき、FIRE達成の可能性をモンテカルロ・シミュレーションで検証します。</p>
     </header>
 
-    <div class="app-info">
-        <h3>アプリの使い方</h3>
+    <div class="app-info" id="app-info-div">
+        <h2>アプリの使い方</h2>
         <ol>
             <li>まずは「基本設定」からシミュレーション期間などを設定してください。</li>
             <li>次に、「保有証券」や「相関係数」などの詳細なデータを入力してください。</li>
             <li>全ての準備ができたら、「シミュレーション実行」から結果を確認できます。</li>
             <li>※入力方法がわからないときは、画面一番下にある、緑色の「サンプルデータの入力」ボタンを押して、入力のイメージをつかんでください。おおむね入力する内容がわかったら赤色の「データをクリアする」ボタンを押して自分の金融資産を入力してください。
             </li>
-
         </ol>
     </div>
 
     <main>
         <div class="navigation-container">
-            <h2>設定項目</h2>
+            <h3>設定項目</h3>
             <nav>
                 <ul>
                     <li><a href="config.html" class="nav-button">基本設定</a></li>
@@ -361,18 +355,15 @@
          * Frontire Explorerのロゴのサイズ変更
         *****************************************************************/
         function convertLogoSize(){
-            // 1. <header>要素を取得する
-            const headerElement = document.querySelector('header');
             // 2. <img>要素を取得する（例: header内の最初の子の<img>）
-            const h1Element = document.querySelector('header h1');
+            const h1Element = document.querySelector('header');
             // 3. <img>要素を取得する（例: header内の最初の子の<img>）
             const imageElement = document.querySelector('header img');
-            if (headerElement && imageElement) {
-                const headerHeight = headerElement.getBoundingClientRect().height;
-                const newImageHeight = headerHeight;
-                imageElement.style.height = `${newImageHeight}px`;
-                imageElement.style.top = h1Element.getBoundingClientRect().top;
+            if (h1Element && imageElement) {
+                imageElement.style.height = `${h1Element.getBoundingClientRect().height/1.5}px`;
                 imageElement.style.width = 'auto'; 
+                imageElement.style.top = `${h1Element.getBoundingClientRect().top+5}px`;
+                imageElement.style.left = `${h1Element.getBoundingClientRect().left}px`;
             }
         }
     </script>
