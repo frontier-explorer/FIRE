@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FIREシミュレーション</title>
+    <link rel="icon" type="image/png" href="./FrontireExplorer.png" sizes="32x32">
     <link rel="stylesheet" href="style.css">
     <style>
         .utility-actions {
@@ -55,19 +56,6 @@
             border-radius: 8px;
             margin-bottom: 20px;
             background-color: #f9f9f9;
-        }
-
-        header {
-            /* 子要素（h1, p, img）に対して position: absolute や position: relative を使用するために必要 */
-            position: relative; 
-        }
-        /* h1とpを最前面に表示するための設定 */
-        header h1,
-        header p {
-            z-index: 10; /* 他のコンテンツより手前に表示 */
-        }
-        .momonga-logo {
-            position: absolute; /* 親要素に対して絶対配置 */
         }
     </style>
 </head>
@@ -132,16 +120,9 @@
 
     <script src="app.js"></script>
     <script>
-        window.addEventListener("orientationchange", function() {
-            //ロゴのサイズの変更
-            convertLogoSize();    
-        });
-
         document.addEventListener('DOMContentLoaded', () => {
             //ロード時に文字としての年月を、実行時のシミュレーションの年月に変換する。
             InitializeDataConvert();
-            //ロゴのサイズの変更
-            convertLogoSize();
 
             const loadSampleDataBtn = document.getElementById('loadSampleDataBtn');
             const clearDataBtn = document.getElementById('clearDataBtn');
@@ -364,21 +345,6 @@
             localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
         }
 
-        /****************************************************************
-         * Frontire Explorerのロゴのサイズ変更
-        *****************************************************************/
-        function convertLogoSize(){
-            // 2. <img>要素を取得する（例: header内の最初の子の<img>）
-            const h1Element = document.querySelector('header');
-            // 3. <img>要素を取得する（例: header内の最初の子の<img>）
-            const imageElement = document.querySelector('header img');
-            if (h1Element && imageElement) {
-                imageElement.style.height = `${h1Element.getBoundingClientRect().height}px`;
-                imageElement.style.width = 'auto'; 
-                imageElement.style.top = `${h1Element.getBoundingClientRect().top+2}px`;
-                imageElement.style.left = `${h1Element.getBoundingClientRect().left+2}px`;
-            }
-        }
     </script>
 </body>
 
