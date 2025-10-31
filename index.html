@@ -57,9 +57,17 @@
             background-color: #f9f9f9;
         }
 
+        header {
+            /* 子要素（h1, p, img）に対して position: absolute や position: relative を使用するために必要 */
+            position: relative; 
+        }
+        /* h1とpを最前面に表示するための設定 */
+        header h1,
+        header p {
+            z-index: 10; /* 他のコンテンツより手前に表示 */
+        }
         .momonga-logo {
             position: absolute; /* 親要素に対して絶対配置 */
-            z-index: 10; /* 他のコンテンツより手前に表示 */
         }
     </style>
 </head>
@@ -365,7 +373,7 @@
             // 3. <img>要素を取得する（例: header内の最初の子の<img>）
             const imageElement = document.querySelector('header img');
             if (h1Element && imageElement) {
-                imageElement.style.height = `${h1Element.getBoundingClientRect().height*0.7}px`;
+                imageElement.style.height = `${h1Element.getBoundingClientRect().height}px`;
                 imageElement.style.width = 'auto'; 
                 imageElement.style.top = `${h1Element.getBoundingClientRect().top+2}px`;
                 imageElement.style.left = `${h1Element.getBoundingClientRect().left+2}px`;
