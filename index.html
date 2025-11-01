@@ -276,7 +276,7 @@
                 const stocks = [];
                 for(element of appData.stocks){
                     if(element.fromMonth){
-                        const w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        let w_month = compareMonthAndGetCurrent(element.fromMonth);
                         if(w_month === -1){
                             w_month = 0;
                         }
