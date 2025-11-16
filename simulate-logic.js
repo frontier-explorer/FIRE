@@ -296,7 +296,15 @@ function handleAssetSale(requiredExpense, currentCash, currentStocks, trialCurre
                             (stock.TaxStartYear * 12 + stock.TaxStartMonth > monthIndex));
         
         // 配列には stocks (currentStocks) の要素への参照が入ります
+        // 配列には stocks (currentStocks) の要素への参照が入ります
         if (isTaxable) {
+            //課税対象銘柄
+            //旧NISA銘柄の場合、課税対象月になったら、その月の価額が平均取得単価になる。
+            if(stock.TaxStartYear * 12 + stock.TaxStartMonth === monthIndex){
+                if(stock.Meigara.endsWith("＜旧NISA＞")){
+                    stock.AveragePrice = stock.CurrentValuePerUnit;
+                }
+            }
             acc.taxableStocks.push(stock);
         } else {
             acc.nonTaxableStocks.push(stock);
