@@ -458,17 +458,6 @@ function applyMonthlyReturn(monthIndex, currentStocks, L, trialCurrentTaxRate) {
             continue;
         }
 
-        //旧NISAの課税開始月になった場合の措置（平均取得価額＜現在価額のとき、平均取得価額を現在価額にする）
-        if(stock.TaxStartYear * 12 + stock.TaxStartMonth === monthIndex){
-            //旧NISA銘柄かチェックする
-            if(stock.Meigara.endsWith("＜旧NISA＞")){
-                    //課税対象開始の月において、平均取得価額より現在価額が上がっているのであれば、同額にする。
-                    if(stock.AveragePrice < stock.CurrentValuePerUnit){
-                        stock.AveragePrice = stock.CurrentValuePerUnit;
-                    }
-            }
-        }
-
         // 単位口数当たりの新しい価額に更新
         stock.CurrentValuePerUnit *= (1 + monthlyRate);
 
@@ -653,6 +642,20 @@ function runMonteCarloSimulation(appData) {
             // 3. 追加投資処理
             const tuikaResult = handleTuikaInvestment(monthIndex, currentCash, currentStocks, appData, meigaraNames);
             currentCash = tuikaResult.currentCash;
+
+            //旧NISAの非課税期間が終了した時の処理
+            //旧NISAの課税開始月になった場合の措置（平均取得価額＜現在価額のとき、平均取得価額を現在価額にする）
+            currentStocks.forEach(stock => {
+                //旧NISA銘柄かチェックする
+                if(stock.Meigara.endsWith("＜旧NISA＞")){
+                    if(stock.TaxStartYear * 12 + stock.TaxStartMonth === monthIndex){
+                        //課税対象開始の月において、平均取得価額より現在価額が上がっているのであれば、同額にする。
+                        if(stock.AveragePrice < stock.CurrentValuePerUnit){
+                            stock.AveragePrice = stock.CurrentValuePerUnit;
+                        }
+                    }
+                }
+            });
 
             // 4. 金融資産の売却 (現金不足の場合)
             let taxPayment = 0;
