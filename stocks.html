@@ -8,6 +8,15 @@
             '自由入力' // ユーザー指定の「自由入力」項目
         ];
 
+        //為替ペアのリスト
+        const EXCHANGE_RATES = [
+            '',        // 空白（為替の影響を受けない・考慮しない）
+            'EUR/USD',
+            'USD/JPY',
+            'EUR/JPY'
+        ];
+
+
         // 数値入力時にカンマ区切りに整形する関数
         const formatNumberInput = (event) => {
             const input = event.target;
@@ -152,6 +161,7 @@
                     }
                 });
 
+
                 // 変更元の入力欄にカンマフォーマットを再適用 (数値入力の場合)
                 if (changedInput.type === 'text' && isNumeric) {
                     changedInput.value = newValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -196,6 +206,14 @@
                     return value !== undefined && value !== null && !isNaN(value) ? value.toLocaleString() : '';
                 };
 
+
+                // 為替ペアの初期値を取得
+                const exchangeRate = stockData.ExchangeRate || '';
+                const exchangeOptions = EXCHANGE_RATES.map(rate => 
+                    `<option value="${rate}" ${rate === exchangeRate ? 'selected' : ''}>${rate === '' ? '空白（為替の影響を受けない）' : rate}</option>`
+                ).join('');
+
+
                 // 口座種別オプションを生成
                 const accountOptions = ACCOUNT_TYPES.map(type =>
                     `<option value="${type}" ${type === accountType ? 'selected' : ''}>${type}</option>`
@@ -225,6 +243,12 @@
                     <div class="custom-account-type-group" style="display: ${customInputDisplay}; margin-bottom: 15px;">
                         <label>自由入力（口座名）:</label>
                         <input type="text" class="custom-account-type-input" placeholder="任意の口座名を入力してください" value="${customAccountValue}" ${isCustomAccount ? '' : 'disabled'}>
+                    </div>
+
+                    <!-- 為替 -->
+                    <div class="form-group">
+                        <label for="exchangeRate_${index}">為替ペア:</label>
+                        <select id="exchangeRate_${index}" class="exchange-rate-select synchronized-input" data-sync-field="ExchangeRate" required>${exchangeOptions}</select>
                     </div>
 
                     <div class="form-group">
@@ -337,8 +361,9 @@
                     const averagePriceValue = item.querySelector('.average-price-input').value;
                     const returnRate = item.querySelector('.return-input').value;
                     const volatility = item.querySelector('.volatility-input').value;
-
                     const fromMonth = item.querySelector('.tax-from-month-input');
+                    //為替ペアの値を取得
+                    const exchangeRate = item.querySelector('.exchange-rate-select').value;
 
                     // カンマを除去して数値に変換
                     const kuchisu = parseInt(kuchisuValue.replace(/,/g, ''), 10);
@@ -379,7 +404,8 @@
                         Volatility: parseFloat(volatility),
                         TaxStartYear: taxStartYear,
                         TaxStartMonth: taxStartMonth,
-                        fromMonth: w_fromMonth
+                        fromMonth: w_fromMonth,
+                        ExchangeRate: exchangeRate  //為替
                     });
                 });
 
