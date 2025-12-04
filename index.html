@@ -1,0 +1,612 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>FIREシミュレーション</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="icon"type="image/png"href="./FrontireExplorer.png"sizes="32x32"><link rel="stylesheet"href="style.css"><style>.utility-actions{margin-top:30px;padding-top:20px;border-top:1px dashed #ccc;display:flex;gap:15px;justify-content:center}#loadSampleDataBtn{background-color:#27ae60;color:#fff;flex-grow:1;max-width:300px}#clearDataBtn{background-color:#e74c3c;color:#fff;flex-grow:1;max-width:300px}#exportDataLink{background-color:#27ae60;color:#fff;flex-grow:1;max-width:300px}#importDataBtn{background-color:#e74c3c;color:#fff;flex-grow:1;max-width:300px}.app-info{padding:15px;border:1px solid #ddd;border-radius:8px;margin-bottom:20px;background-color:#f9f9f9}</style><header><h1>FIREシミュレーション</h1><p>あなたの財務データに基づき、FIRE達成の可能性をモンテカルロ・シミュレーションで検証します。</header><div class="app-info"id="app-info-div"><h2>アプリの使い方</h2><ol><li>まずは「基本設定」からシミュレーション期間などを設定してください。<li>次に、「保有証券」や「相関係数」などの詳細なデータを入力してください。<li>全ての準備ができたら、「シミュレーション実行」から結果を確認できます。<li>※入力方法がわからないときは、画面一番下にある、緑色の「サンプルデータの入力」ボタンを押して、入力のイメージをつかんでください。おおむね入力する内容がわかったら赤色の「データをクリアする」ボタンを押して自分の金融資産を入力してください。</ol></div><main><div class="navigation-container"><h3>設定項目</h3><nav><ul><li><a href="config.html"class="nav-button">基本設定</a><li><a href="stocks.html"class="nav-button">保有証券</a><li><a href="soukan.html"class="nav-button">相関係数</a><li><a href="tuika.html"class="nav-button">追加投資</a><li><a href="life_cost.html"class="nav-button">生活費</a><li><a href="big_expense.html"class="nav-button">大きな出費</a><li><a href="income.html"class="nav-button">収入設定</a><li><a href="tax.html"class="nav-button">税金設定</a><li><a href="dividend_setting.html"class="nav-button">分配金・配当金設定（元本含むタイプは対象外）</a><li><a href="exchangeRate.html"class="nav-button">為替レート設定</a></ul></nav><br><nav><div class="utility-actions"><a href="#"id="exportDataLink"class="nav-button action-button">設定ファイルをエクスポート</a> <button id="importDataBtn"class="nav-button action-button">設定ファイルを読み込む</button></div></nav><br><a href="simulate.html"id="simulateLink"class="nav-button simulate-button"style="margin-top:20px">シミュレーション実行</a></div><div class="utility-actions"><button id="loadSampleDataBtn"class="nav-button"type="button">サンプルデータの入力</button> <button id="clearDataBtn"class="nav-button"type="button">データをクリアする</button></div></main><div><p><a href="FrontireExplorer.png"download>Webアイコンファイル (FrontireExplorer.png)</a><p><a href="FrontireExplorer.sig">Webアイコンへの署名</a><p><a href="public.pem">著者の公開鍵</a><p>本サイトのメインキャラクター等のイラストは、生成AI: Google Geminiの画像を基に、必要に応じて加筆・修正を行っています。<p>© 2025 FrontierExplorerChannel All Rights Reserved. (URL: https://www.youtube.com/@Frontier_Explorer)<br><br>本サイトの著作物（HTML, CSS, JS, デザイン等）の無断転載・複製・改変・再頒布を禁じます。<br>グラフ描画には、Chart.js（MITライセンス）を利用しています。</div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+            //ロード時に文字としての年月を、実行時のシミュレーションの年月に変換する。
+            InitializeDataConvert();
+
+            const loadSampleDataBtn = document.getElementById('loadSampleDataBtn');
+            const clearDataBtn = document.getElementById('clearDataBtn');
+            const simulateLink = document.getElementById('simulateLink');
+
+            // 1. サンプルデータ (FIRE_Settings_Export.jsonの内容を反映)
+            const sampleData = {
+                "config": {
+                    "period": 50,
+                    "times": 200,
+                    "birthDate": "2000-01-01",
+                    "cash": 4400000,
+                    "inflationRate": 2
+                },
+                "stocks": [
+                    {
+                        "Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "Kuchisu": 18000000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 38000,
+                        "AveragePrice": 18000,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": 0,
+                        "TaxStartMonth": 0,
+                        "fromMonth": "2025-10",
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "Kuchisu": 50000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 23000,
+                        "AveragePrice": 17000,
+                        "Return": 12,
+                        "Volatility": 20,
+                        "TaxStartYear": 0,
+                        "TaxStartMonth": 0,
+                        "fromMonth": "2025-10",
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "Kuchisu": 5000000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 35000,
+                        "AveragePrice": 17000,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": 0,
+                        "TaxStartMonth": 0,
+                        "fromMonth": "2025-10",
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "Kuchisu": 700000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 38000,
+                        "AveragePrice": 34561,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": null,
+                        "TaxStartMonth": null,
+                        "fromMonth": null,
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "Kuchisu": 2000000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 23000,
+                        "AveragePrice": 13928,
+                        "Return": 12,
+                        "Volatility": 20,
+                        "TaxStartYear": null,
+                        "TaxStartMonth": null,
+                        "fromMonth": null,
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "Kuchisu": 1000000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 38000,
+                        "AveragePrice": 28555,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": null,
+                        "TaxStartMonth": null,
+                        "fromMonth": null,
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "Kuchisu": 200000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 38000,
+                        "AveragePrice": 22523,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": 17,
+                        "TaxStartMonth": 1,
+                        "fromMonth": "2042-12",
+                        "ExchangeRate": "USD/JPY"
+                    },
+                    {
+                        "Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "Kuchisu": 400000,
+                        "Tani": 10000,
+                        "CurrentValuePerUnit": 35000,
+                        "AveragePrice": 17560,
+                        "Return": 8,
+                        "Volatility": 15,
+                        "TaxStartYear": 17,
+                        "TaxStartMonth": 1,
+                        "fromMonth": "2042-12",
+                        "ExchangeRate": "USD/JPY"
+                    }
+                ],
+                "soukan": [
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜特定＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "B_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜特定＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "B_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ニッセイＮＡＳＤＡＱ１００インデックスファンド＜成長(新NISA)＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.95
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "B_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "keisu": 1
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.99999
+                    },
+                    {
+                        "A_Meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜旧NISA＞",
+                        "B_Meigara": "ＳＢＩ・Ｖ・Ｓ＆Ｐ５００インデックス・ファンド＜旧NISA＞",
+                        "keisu": 0.99999
+                    }
+                ],
+                "lifeCost": [
+                    {
+                        "month": -1,
+                        "amount": 220000,
+                        "fromMonth": "2025-10"
+                    }
+                ],
+                "tax": [
+                    {
+                        "month": -1,
+                        "rate": 20.315,
+                        "fromMonth": "2025-10"
+                    }
+                ],
+                "tuika": [
+                    {
+                        "month": -1,
+                        "meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜特定＞",
+                        "amount": 100000,
+                        "fromMonth": "2025-10",
+                        "toMonth": "2029-03",
+                        "pattern": "各月",
+                        "toMonth_totalMonths": 40
+                    },
+                    {
+                        "month": 2,
+                        "meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜成長(新NISA)＞",
+                        "amount": 2400000,
+                        "fromMonth": "2026-01",
+                        "toMonth": "2028-01",
+                        "pattern": "各年",
+                        "toMonth_totalMonths": 26
+                    },
+                    {
+                        "month": 2,
+                        "meigara": "ｅＭＡＸＩＳ　Ｓｌｉｍ　米国株式（Ｓ＆Ｐ５００）＜積立(新NISA)＞",
+                        "amount": 1200000,
+                        "fromMonth": "2026-01",
+                        "toMonth": "2028-01",
+                        "pattern": "各年",
+                        "toMonth_totalMonths": 26
+                    }
+                ],
+                "bigExpense": [
+                    {
+                        "month": 41,
+                        "amount": 5000000,
+                        "reason": "車を買う",
+                        "from_month": "2029-04"
+                    },
+                    {
+                        "month": 218,
+                        "amount": 5000000,
+                        "reason": "田舎に家を買う",
+                        "from_month": "2044-01"
+                    }
+                ],
+                "income": [
+                    {
+                        "startTotalMonths": -1,
+                        "endTotalMonths": 40,
+                        "amount": 300000,
+                        "reason": "給料",
+                        "fromMonth": "2025-10",
+                        "toMonth": "2029-03"
+                    },
+                    {
+                        "startTotalMonths": 41,
+                        "endTotalMonths": 41,
+                        "amount": 10000000,
+                        "reason": "退職金",
+                        "fromMonth": "2029-04",
+                        "toMonth": "2029-04"
+                    },
+                    {
+                        "startTotalMonths": 41,
+                        "endTotalMonths": 160,
+                        "amount": 30000,
+                        "reason": "アルバイト",
+                        "fromMonth": "2029-04",
+                        "toMonth": "2039-03"
+                    },
+                    {
+                        "startTotalMonths": 161,
+                        "endTotalMonths": null,
+                        "amount": 100000,
+                        "reason": "年金",
+                        "fromMonth": "2039-04",
+                        "toMonth": null
+                    }
+                ],
+                "exchangeRate": [
+                    {
+                        "pair": "USD/JPY",
+                        "currentRate": 155,
+                        "targetRate": 120,
+                        "volatility": 10,
+                        "reversionSpeed": 0.3
+                    },
+                    {
+                        "pair": "EUR/JPY",
+                        "currentRate": 180,
+                        "targetRate": 138,
+                        "volatility": 12,
+                        "reversionSpeed": 0.4
+                    },
+                    {
+                        "pair": "EUR/USD",
+                        "currentRate": 1.15,
+                        "targetRate": 1.15,
+                        "volatility": 8,
+                        "reversionSpeed": 0.5
+                    }
+                ],
+                "exchangeRateCorrelations": [
+                    {
+                        "pairA": "USD/JPY",
+                        "pairB": "EUR/JPY",
+                        "keisu": 0.8
+                    },
+                    {
+                        "pairA": "USD/JPY",
+                        "pairB": "EUR/USD",
+                        "keisu": 0.1
+                    },
+                    {
+                        "pairA": "EUR/JPY",
+                        "pairB": "EUR/USD",
+                        "keisu": 0.5
+                    }
+                ],
+                "dividend_setting": [
+                ]
+            };
+
+
+            // 2. サンプルデータ読み込み機能
+            loadSampleDataBtn.addEventListener('click', () => {
+                if (confirm('現在の設定データは上書きされます。サンプルデータを読み込みますか？')) {
+                    // Local Storageにサンプルデータを保存
+                    localStorage.setItem('fireSimulatorData', JSON.stringify(sampleData));
+                    alert('サンプルデータが読み込まれました！\n各設定画面で内容をご確認後、「シミュレーション実行」へ進んでください。');
+                    // ページをリロードして変更を反映
+                    window.location.reload();
+                }
+            });
+
+            // 3. データクリア機能（追加）
+            clearDataBtn.addEventListener('click', () => {
+                if (confirm('Local Storageに保存されている全ての設定データ（基本設定、保有証券など）を削除しますか？')) {
+                    localStorage.removeItem('fireSimulatorData');
+                    alert('設定データがクリアされました。');
+                    // ページをリロードして変更を反映
+                    window.location.reload();
+                }
+            });
+
+
+            // (既存のシミュレーション実行時のバリデーションロジック)
+            simulateLink.addEventListener('click', (event) => {
+                let dataString = localStorage.getItem('fireSimulatorData');
+                let appData;
+
+                // 1. データが存在するかチェック
+                if (!dataString) {
+                    event.preventDefault(); // 遷移を阻止
+                    alert('設定データが保存されていません。全ての必須項目を設定してから実行してください。');
+                    return;
+                }
+
+                // 2. データが有効なJSONかチェック
+                try {
+                    appData = JSON.parse(dataString);
+                } catch (e) {
+                    event.preventDefault(); // 遷移を阻止
+                    alert('設定データが壊れています。データをクリアして再度設定し直すか、「設定ファイルを読み込む」で正しいファイルをロードしてください。');
+                    return;
+                }
+
+                // 3. 最低限必要なデータ（configとstocks）が存在するかチェック
+                const hasConfig = appData.config && appData.config.period > 0 && appData.config.times > 0;
+                const hasStocks = appData.stocks && appData.stocks.length > 0;
+
+                if (!hasConfig || !hasStocks) {
+                    event.preventDefault(); // 遷移を阻止
+                    let message = 'シミュレーションに必要なデータが不足しています。\n\n';
+                    if (!hasConfig) {
+                        message += '・「基本設定」でシミュレーション期間や試行回数が設定されていません。\n';
+                    }
+                    if (!hasStocks) {
+                        message += '・「保有証券」が登録されていません。\n';
+                    }
+                    message += '\n設定ページに戻り、全ての必須項目を入力してください。';
+                    alert(message);
+                    return;
+                }
+
+                // データが揃っていれば、そのまま遷移を許可
+            });
+
+
+            // (既存のエクスポート/インポート機能のロジック)
+
+            // エクスポート機能
+            document.getElementById('exportDataLink').addEventListener('click', function (e) {
+                const data = localStorage.getItem('fireSimulatorData');
+                if (!data || data === '{}') {
+                    e.preventDefault();
+                    alert('エクスポートする設定データがありません。');
+                    return;
+                }
+
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                e.currentTarget.href = url;
+                e.currentTarget.download = 'FIRE_Settings_Export.json';
+                // ダウンロード後、URLを解放
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+            });
+
+            // インポート機能
+            document.getElementById('importDataBtn').addEventListener('click', function () {
+                // ファイル入力エレメントを動的に作成
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.json'; // JSONファイルのみを受け付ける
+
+                fileInput.onchange = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const content = e.target.result;
+                            const newAppData = JSON.parse(content);
+
+                            // 必須チェック: FIREシミュレータのデータ構造か確認（最低限configがあるか）
+                            if (!newAppData || typeof newAppData !== 'object' || !newAppData.config) {
+                                alert('エラー: ファイルの内容が正しくありません。FIREシミュレータの設定ファイルであることを確認してください。');
+                                return;
+                            }
+
+                            // Local Storageに上書き保存
+                            localStorage.setItem('fireSimulatorData', JSON.stringify(newAppData));
+
+                            alert('設定ファイルを読み込み、Local Storageに保存しました！\n各設定画面で内容をご確認ください。');
+
+                            // 読み込み後、メイン画面をリロードして反映
+                            window.location.reload();
+
+                        } catch (error) {
+                            alert('ファイルの解析に失敗しました。ファイルが破損しているか、JSON形式ではありません。');
+                            console.error('File load error:', error);
+                        }
+                    };
+                    // ファイルをテキスト（文字列）として読み込む
+                    reader.readAsText(file);
+                };
+                // 隠されたinput要素をクリックしてファイル選択ダイアログを表示
+                fileInput.click();
+            });
+        });
+
+
+        /*******************************************************************
+        登録された文字の年月データを、シミュレーション上の年月に変換する。
+        ********************************************************************/
+        function InitializeDataConvert() {
+            const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+            //データがなければ処理しない
+            if (!appData || appData === '{}') {
+                return;
+            }
+            //保有証券
+            if (appData.stocks && appData.stocks !== '{}') {
+                const stocks = [];
+                for (element of appData.stocks) {
+                    if (element.fromMonth) {
+                        let w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        if (w_month === -1) {
+                            w_month = 0;
+                        }
+                        const taxStartYear = Math.floor(w_month / 12);
+                        const taxStartMonth = (w_month % 12);
+                        element.TaxStartYear = taxStartYear;
+                        element.TaxStartMonth = taxStartMonth;
+                    }
+                }
+            }
+            //追加投資
+            if (appData.tuika && appData.tuika !== '{}') {
+                for (element of appData.tuika) {
+                    if (element.fromMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        element.month = w_month;
+                    }
+                    if (element.toMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.toMonth);
+                        element.toMonth_totalMonths = w_month;
+                    }
+                }
+            }
+            //生活費
+            if (appData.lifeCost && appData.lifeCost !== '{}') {
+                for (element of appData.lifeCost) {
+                    if (element.fromMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        element.month = w_month;
+                    }
+                }
+            }
+            //大きな出費
+            if (appData.bigExpense && appData.bigExpense !== '{}') {
+                for (element of appData.bigExpense) {
+                    if (element.from_month) {
+                        const w_month = compareMonthAndGetCurrent(element.from_month);
+                        element.month = w_month;
+                    }
+                }
+            }
+            //収入
+            if (appData.income && appData.income !== '{}') {
+                for (element of appData.income) {
+                    if (element.fromMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        element.startTotalMonths = w_month;
+                    }
+                    if (element.toMonthDate) {
+                        const w_month = compareMonthAndGetCurrent(element.toMonthDate);
+                        element.endTotalMonths = w_month;
+                    }
+                }
+            }
+            //税金
+            if (appData.tax && appData.tax !== '{}') {
+                for (element of appData.tax) {
+                    if (element.fromMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.fromMonth);
+                        element.month = w_month;
+                    }
+                }
+            }
+
+            localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+        }</script>

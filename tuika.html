@@ -1,0 +1,188 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>追加投資</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><style>.instruction-box{background-color:#f0f8ff;border-left:5px solid #3498db;padding:15px;margin-bottom:20px;border-radius:4px}.tuika-item{background:#fff;padding:15px;border:1px solid #e0eaf3;border-radius:8px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,.05)}.input-group{display:flex;align-items:center;gap:10px;margin-bottom:10px}.input-group label{margin-bottom:0;white-space:nowrap}.input-group input,.input-group select{width:auto;flex-grow:1;padding:8px;border:1px solid #ccc;border-radius:4px}.tuika-item .remove-btn{background-color:#e74c3c;color:#fff;border-radius:20px;padding:8px 15px;font-size:14px;margin-top:10px}.error-input{border:2px solid #e74c3c!important}</style><div class="container"><header><h1>追加投資</h1><p>シミュレーション期間中に一度だけ行われる追加投資イベントを設定します。</header><main><div class="input-section"><h2>追加投資イベント一覧</h2><div class="instruction-box"><p>💡 <strong>入力方法:</strong><ul><li>追加投資年月（年/月）:** 追加投資が**一回だけ**行われるタイミングを設定します。<li>投資額: その月に一回投資する金額（円）を入力します。<li>【重要】このシミュレーションでは、設定された月初（前月末の終値）の価額で売買が行われます。その月の市場変動の影響を受ける前の価額が適用されます。<li>【重要】追加投資を行う年月において、追加投資に必要な「保有現金」が足りないときは、投資「されません」。</ul></div><div id="tuikaContainer"></div><div class="form-actions"><button id="addTuikaBtn"type="button"class="nav-button">投資イベントを追加</button> <button id="saveTuikaBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+            const tuikaContainer = document.getElementById('tuikaContainer');
+            const addTuikaBtn = document.getElementById('addTuikaBtn');
+            const saveTuikaBtn = document.getElementById('saveTuikaBtn');
+
+            // stocks.htmlで設定された銘柄リストを取得
+            const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+            const stocks = appData.stocks || [];
+
+            // 銘柄選択用のオプションHTMLを生成
+            const generateStockOptions = (selectedValue = '') => {
+                let options = stocks.map(stock =>
+                    `<option value="${stock.Meigara}" ${stock.Meigara === selectedValue ? 'selected' : ''}>${stock.Meigara}</option>`
+                ).join('');
+                // 銘柄が一つもない場合は選択肢を無効化
+                if (stocks.length === 0) {
+                    options = '<option value="" disabled selected>銘柄が登録されていません</option>';
+                }
+                return options;
+            };
+
+            // 投資アイテムの番号を更新する
+            const updateTuikaNumbers = () => {
+                document.querySelectorAll('.tuika-item h3').forEach((header, index) => {
+                    header.textContent = `追加投資イベント #${index + 1}`;
+                });
+            };
+
+            // 追加投資アイテムのHTMLを生成・DOMに追加
+            const createTuikaItem = (data = { month: 0, meigara: stocks.length > 0 ? stocks[0].Meigara : '', amount: 0 }) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.classList.add('tuika-item');
+
+                //ラジオボタンをグループごとにわけるため、ユニークな数値を生成する
+                const uniqueId = Date.now() + Math.random();
+                const radioGroupName = `to-month-option-${uniqueId}`;
+
+                // HTML生成
+                itemDiv.innerHTML = `
+                    <h3>追加投資イベント</h3>
+                    <div class="input-group input-group">
+                        <label for="month-input">追加投資する年・月を選択:</label>
+            			<input type="month" class="tuika-from-month-input" name="selected-from-month" value="${data.fromMonth || ''}">
+                    </div>
+                    <div class="input-group input-group">
+            			<label for="month-input">追加投資の終了する年・月を選択:</label>
+            			<input type="month" class="tuika-to-month-input" name="${radioGroupName}" value="${data.toMonth || ''}">
+            			<label><input type="radio" name="${radioGroupName}" value="１回" ${data.pattern === "１回" ? "checked" : ""} />１回のみ</label>
+            			<label><input type="radio" name="${radioGroupName}" value="各月" ${data.pattern === "各月" ? "checked" : ""} />各月投資</label>
+            			<label><input type="radio" name="${radioGroupName}" value="各年" ${data.pattern === "各年" ? "checked" : ""} />各年投資</label>
+                    </div>
+                    <div class="input-group">
+                        <label>銘柄:</label>
+                        <select class="tuika-meigara" required ${stocks.length === 0 ? 'disabled' : ''}>
+                            ${generateStockOptions(data.meigara)}
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>投資額（円）:</label>
+                        <input type="text" class="tuika-amount" value="${data.amount}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <button type="button" class="nav-button remove-btn">削除</button>
+                `;
+
+                const removeBtn = itemDiv.querySelector('.remove-btn');
+                removeBtn.addEventListener('click', () => {
+                    itemDiv.remove();
+                    updateTuikaNumbers();
+                });
+
+                tuikaContainer.appendChild(itemDiv);
+                updateTuikaNumbers();
+            };
+
+            const addTuikaItem = () => {
+                createTuikaItem();
+            };
+
+            // データを読み込み、表示する関数
+            const loadTuika = () => {
+                tuikaContainer.innerHTML = '';
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const tuikaData = appData.tuika || [];
+
+                if (tuikaData.length === 0) {
+                    addTuikaItem(); // データがない場合は初期アイテムを一つ追加
+                } else {
+                    tuikaData.forEach(data => createTuikaItem(data));
+                }
+
+                // 金額入力欄のフォーマットを再適用
+                document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    //初回１回のみ３桁毎の数値に変換する処理
+                    if (input.value) {
+                        const value = input.value.replace(/,/g, '');
+                        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+                    //numericの設定になっているものに、入力の都度、３桁毎の数値に変換する処理を呼び出す。
+                    input.addEventListener('input', formatNumberInput);
+                });
+
+            };
+
+            // --- イベントリスナーの設定 ---
+            addTuikaBtn.addEventListener('click', addTuikaItem);
+
+            saveTuikaBtn.addEventListener('click', () => {
+                const tuikaData = [];
+                let isValid = true;
+
+                document.querySelectorAll('.tuika-item').forEach(itemDiv => {
+                    const fromMonth = itemDiv.querySelector('.tuika-from-month-input');
+                    const toMonth = itemDiv.querySelector('.tuika-to-month-input');
+                    const meigaraInput = itemDiv.querySelector('.tuika-meigara');
+                    const amountInput = itemDiv.querySelector('.tuika-amount');
+
+                    //各月投資、各年投資のラジオボタンの状態を取得
+                    const toMonthInput = itemDiv.querySelector('.tuika-to-month-input');
+                    const dynamicGroupName = toMonthInput.name;
+                    const checkedInput = itemDiv.querySelector(`input[name="${dynamicGroupName}"]:checked`);
+
+                    const meigara = meigaraInput.value;
+                    const amount = parseInt(amountInput.value.replace(/,/g, ''), 10); // カンマを削除して数値に変換
+
+                    if (!fromMonth || fromMonth.value.trim() === "" || amount < 0 || !meigara) {
+                        isValid = false;
+                        fromMonth.classList.add('error-input');
+                        toMonth.classList.add('error-input');
+                        amountInput.classList.add('error-input');
+                        meigaraInput.classList.add('error-input');
+                        return; // forEachから抜ける
+                    }
+                    //投資が１回限りではないときのチェック
+                    if (checkedInput.value !== "１回" && toMonth.value !== "") {
+                        const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
+                        const toMonth_totalMonths = compareMonthAndGetCurrent(toMonth.value);
+                        if (totalMonths > toMonth_totalMonths) {
+                            isValid = false;
+                            fromMonth.classList.add('error-input');
+                            toMonth.classList.add('error-input');
+                            amountInput.classList.add('error-input');
+                            meigaraInput.classList.add('error-input');
+                            return; // forEachから抜ける
+                        }
+                    }
+                    // エラーのない状態であればスタイルを元に戻す
+                    fromMonth.classList.remove('error-input');
+                    toMonth.classList.remove('error-input');
+                    amountInput.classList.remove('error-input');
+                    meigaraInput.classList.remove('error-input');
+
+                    //追加投資の開始年月と、終了年月をシミュレーション上のトータル月数に変換する
+                    const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
+                    let toMonth_value = toMonth.value !== "" ? toMonth.value : null;
+                    if (checkedInput.value === "１回") {
+                        //１回というのであれば、開始年月と同じに強制的にする
+                        toMonth_value = fromMonth.value;
+                    }
+
+                    tuikaData.push({
+                        month: totalMonths,
+                        meigara: meigara,
+                        amount: amount,
+                        fromMonth: fromMonth.value,
+                        toMonth: toMonth_value,
+                        pattern: checkedInput.value,
+                        toMonth_totalMonths: totalMonths
+                    });
+                });
+
+                if (!isValid) {
+                    alert('全ての項目に正しい数値を入力してください。');
+                    return;
+                }
+
+                // 総月数でソートして保存
+                const sortedTuikaData = tuikaData.sort((a, b) => a.month - b.month);
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.tuika = sortedTuikaData;
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('追加投資の設定が保存されました！');
+
+                // 保存後に再ロードして表示を更新（カンマフォーマットの再適用など）
+                loadTuika();
+            });
+
+            loadTuika();
+        });</script>

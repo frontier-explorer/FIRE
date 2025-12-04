@@ -1,0 +1,226 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>配当設定</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><style>.instruction-box{background-color:#f0f8ff;border-left:5px solid #3498db;padding:15px;margin-bottom:20px;border-radius:4px}.dividend-item{padding:20px;border:1px solid #ddd;border-radius:8px;margin-bottom:25px;background-color:#fff;position:relative}.dividend-item h3{margin-top:0;color:var(--color-primary);border-bottom:2px solid #eee;padding-bottom:10px}.payment-months-container{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:10px;border:1px dashed #ccc;border-radius:4px}.payment-months-container label{display:flex;align-items:center;font-weight:400}.payment-months-container input[type=checkbox]{margin-right:5px}.tax-adjustment-group .instruction-text{font-size:.9em;color:#e74c3c;margin-top:5px;padding-left:5px}.form-group select{padding:10px;border:1px solid #ccc;border-radius:4px;width:100%;box-sizing:border-box}.utility-actions{margin-top:30px;padding-top:20px;border-top:1px dashed #ccc;text-align:center}.back-link{margin-top:20px;padding-top:10px;border-top:1px solid #eee;text-align:center}</style><div class="container"><header><h1>配当設定（元本含まず）</h1><p>※元本を含んで分配とするタイプはシミュレーション対象外になっています。（現在まで）</header><main><div class="input-section"><h2>配当イベント一覧</h2><div id="dividendList"></div><button type="button"id="addDividendBtn"class="nav-button">配当設定を追加</button></div><div class="utility-actions"><button type="button"id="saveDividendBtn"class="save-button">設定を保存</button></div></main><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></div><template id="dividendItemTemplate"><div class="dividend-item"><div class="form-group"><label>紐づける保有証券:</label> <select class="meigara_key"required></select><p class="instruction-text">※ stocks.htmlで設定した保有証券を選択してください。</div><div class="form-group"><label>平均配当率（年率 %）:</label> <input type="number"class="dividend_rate"min="0"step="0.01"value="3.0"required></div><div class="form-group tax-adjustment-group"><label>配当金にかかる税務処理:</label> <select class="tax_adjustment"required><option value="調整あり"selected="selected">外国課税調整あり（国内税率）<option value="調整なし">外国課税調整なし（国内税率+10%の税金）</select><p class="instruction-text">※注意<br>日本の銘柄または、外国課税があり国内税率の調整が自動で行われる場合は「外国課税調整あり」を選択してください。<br>それ以外は一番高い税制になる「外国課税調整なし」を選択してください。<br>「外国課税調整なし」は、国内税率＋１０％の税金が引かれます。外国へ支払った税金１０％は確定申告後に戻ってきますが、<br>あなたの収入状況によって、社会保険料等の増額等に影響があるため、戻ってくる金額が定まりません。<br>よって、フェールセーフの判断で、３０．３１５％の税率をそのまま受けたものとして処理します。</div><div class="form-group"><label>配当月（受取月）:</label><div class="payment-months-container"></div></div><button type="button"class="remove-btn">削除</button></div></template><script src="app.js"></script><script>// ----------------------------------------------------
+        // データ構造のキー
+        const DATA_KEY = 'dividend_setting';
+        // ----------------------------------------------------
+
+        // グローバルスコープで保有証券データを保持（ロード時に設定）
+        let availableStocks = [];
+
+        /**
+         * 1月〜12月のチェックボックスを生成・レンダリング
+         * @param {Element} container - チェックボックスを配置する親要素
+         * @param {Array<number>} [checkedMonths=[]] - チェック済みの月 (1-12) の配列
+         */
+        function renderPaymentMonths(container, checkedMonths = []) {
+            container.innerHTML = ''; // コンテンツをクリア
+            const monthNames = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+            for (let i = 1; i <= 12; i++) {
+                const isChecked = checkedMonths.includes(i);
+                const monthName = monthNames[i - 1];
+
+                const label = document.createElement('label');
+                label.innerHTML = `
+                    <input type="checkbox" class="payment_month_checkbox" value="${i}" ${isChecked ? 'checked' : ''}>
+                    ${monthName}
+                `;
+                container.appendChild(label);
+            }
+        }
+
+        /**
+         * 新しい配当設定アイテムをリストに追加し、イベントリスナーを設定する
+         * @param {Object} [data] - ロードする既存のデータ
+         */
+        function addDividendItem(data = {}) {
+            const template = document.getElementById('dividendItemTemplate');
+            const clone = template.content.cloneNode(true);
+            const newItem = clone.querySelector('.dividend-item');
+            const dividendList = document.getElementById('dividendList');
+
+            // データのデフォルト設定
+            const defaults = {
+                MeigaraKey: '',
+                DividendRate: 3.0,
+                TaxAdjustment: '調整あり', // デフォルトは「調整あり」
+                PaymentMonths: [3, 6, 9, 12] // デフォルトで四半期払いをチェック
+            };
+            const itemData = { ...defaults, ...data }; 
+
+            // --- 銘柄リストボックスの生成と設定 ---
+            const meigaraKeySelect = newItem.querySelector('.meigara_key');
+            meigaraKeySelect.innerHTML = ''; // 既存のオプションをクリア
+
+            // プレースホルダーとして空のオプションを追加
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = '--- 証券を選択してください ---';
+            defaultOption.disabled = true;
+            meigaraKeySelect.appendChild(defaultOption);
+
+            let isMeigaraKeyFound = false;
+
+            // 利用可能な保有証券のオプションを追加
+            availableStocks.forEach(stock => {
+                const option = document.createElement('option');
+                // stocks.htmlのデータ構造にある Meigara (銘柄名+口座種別) を値とする
+                const stockKey = stock.Meigara;
+                option.value = stockKey;
+                option.textContent = stockKey;
+
+                // ロードされた既存のデータと値が一致する場合
+                if (stockKey === itemData.MeigaraKey) {
+                    option.selected = true;
+                    isMeigaraKeyFound = true;
+                }
+                meigaraKeySelect.appendChild(option);
+            });
+
+            // 既存データが空、または選択肢に存在しない場合はデフォルトを選択
+            if (!itemData.MeigaraKey || !isMeigaraKeyFound) {
+                meigaraKeySelect.value = ''; // デフォルトオプションを選択
+            }
+            // ----------------------------------------------------
+
+
+            // その他のフォーム要素に値を設定
+            newItem.querySelector('.dividend_rate').value = itemData.DividendRate;
+            // TaxAdjustmentを直接設定
+            newItem.querySelector('.tax_adjustment').value = itemData.TaxAdjustment;
+
+            // 配当月チェックボックスのレンダリング
+            const monthContainer = newItem.querySelector('.payment-months-container');
+            renderPaymentMonths(monthContainer, itemData.PaymentMonths);
+
+            // イベントリスナーの設定
+            // 1. 削除ボタン
+            newItem.querySelector('.remove-btn').addEventListener('click', (e) => {
+                e.target.closest('.dividend-item').remove();
+            });
+
+            dividendList.appendChild(newItem);
+        }
+
+        /**
+         * Local Storageからデータを読み込み、フォームに反映させる
+         * stocks.htmlから銘柄が削除されていた場合、該当するdividend_settingの銘柄は破棄する。
+         */
+        function loadDividends() {
+            const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+
+            // 1. 保有証券データと配当設定データをロード
+            availableStocks = appData.stocks || [];
+            let dividends = appData[DATA_KEY] || [];
+
+            // 2. 存在しない銘柄を参照している配当設定をフィルタリング
+            const validStockKeys = new Set(availableStocks.map(stock => stock.Meigara));
+            const validDividends = [];
+            const removedItemsCount = dividends.length; // 削除前の数
+
+            dividends.forEach(d => {
+                // MeigaraKeyでstocks.htmlのデータと紐づけられるか確認
+                if (validStockKeys.has(d.MeigaraKey)) {
+                    validDividends.push(d);
+                }
+            });
+            
+            // 3. 破棄されたデータがある場合、localStorageを更新（次回ロード時に孤立データを残さないため）
+            if (removedItemsCount !== validDividends.length) {
+                appData[DATA_KEY] = validDividends;
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                console.warn(`stocks.htmlで削除された銘柄に関連する配当設定${removedItemsCount - validDividends.length}件を破棄し、データを更新しました。`);
+            }
+            
+            // 4. フォームへの反映
+            const dividendList = document.getElementById('dividendList');
+            dividendList.innerHTML = ''; // 既存のリストをクリア
+            
+            // 破棄後の有効なデータ、またはデータがない場合の処理
+            if (validDividends.length === 0) {
+                // データがない場合、デフォルトで1件表示
+                addDividendItem();
+            } else {
+                // 有効な既存のデータをロード
+                validDividends.forEach(data => addDividendItem(data));
+            }
+        }
+
+        /**
+         * フォームのデータを収集し、Local Storageに保存する
+         */
+        function saveDividends() {
+            const dividendItems = document.querySelectorAll('#dividendList .dividend-item');
+            const dividendData = [];
+            let isValid = true;
+
+            // stocks.htmlから保有証券データを取得
+            const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+            const availableStocksMap = new Map();
+            (appData.stocks || []).forEach(stock => {
+                availableStocksMap.set(stock.Meigara, stock);
+            });
+            
+            if (availableStocksMap.size === 0) {
+                // カスタムモーダル UI を使用する必要があるが、ここでは簡略化のため alert を使用
+                alert('エラー: stocks.htmlで保有証券が設定されていません。先に保有証券を設定してください。');
+                return;
+            }
+
+
+            dividendItems.forEach(item => {
+                const meigaraKeySelect = item.querySelector('.meigara_key');
+                const dividendRateInput = item.querySelector('.dividend_rate');
+                const taxAdjustmentSelect = item.querySelector('.tax_adjustment'); 
+                const monthCheckboxes = item.querySelectorAll('.payment_month_checkbox:checked');
+
+                const meigaraKey = meigaraKeySelect.value; // リストボックスから値を取得
+                const dividendRate = parseFloat(dividendRateInput.value);
+                const stockDetails = availableStocksMap.get(meigaraKey); // 紐づく保有証券の詳細
+
+                // バリデーション
+                // 銘柄キーが空、配当率が不正、または配当月が未選択の場合
+                if (!meigaraKey || meigaraKey.trim() === '' || isNaN(dividendRate) || dividendRate < 0 || monthCheckboxes.length === 0 || !stockDetails) {
+                    isValid = false;
+                    item.style.border = '2px solid #e74c3c'; // エラー強調
+                    // alert() は使えないため、エラーログを出す
+                    console.error('Validation Error: 必須項目が未入力または不正な値です。', { meigaraKey, dividendRate, monthCount: monthCheckboxes.length });
+                    return;
+                } else {
+                    item.style.border = '1px solid #ddd';
+                }
+
+                // チェックされた月を収集
+                const paymentMonths = Array.from(monthCheckboxes).map(cb => parseInt(cb.value, 10));
+
+                dividendData.push({
+                    MeigaraKey: meigaraKey,
+                    DividendRate: dividendRate,
+                    TaxAdjustment: taxAdjustmentSelect.value, 
+                    PaymentMonths: paymentMonths
+                });
+            });
+
+            if (!isValid) {
+                // カスタムモーダル UI を使用する必要があるが、ここでは簡略化のため alert を使用
+                alert('全ての項目を正しく入力してください。特に保有証券の選択、配当率、配当月は必須です。');
+                return;
+            }
+
+            // データのキー
+            appData[DATA_KEY] = dividendData;
+            localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+            // カスタムモーダル UI を使用する必要があるが、ここでは簡略化のため alert を使用
+            alert('配当設定が保存されました！');
+        }
+
+        /*******************************************************************
+            ページLoad時の処理
+        *******************************************************************/
+        document.addEventListener('DOMContentLoaded', () => {
+            // データをロードしてフォームに反映
+            loadDividends();
+
+            // イベントリスナーの設定
+            document.getElementById('addDividendBtn').addEventListener('click', () => addDividendItem());
+            document.getElementById('saveDividendBtn').addEventListener('click', saveDividends);
+        });</script>

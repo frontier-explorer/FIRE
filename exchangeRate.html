@@ -1,0 +1,287 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>為替レート設定</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><style>.exchange-pair-item{background:#fff;padding:15px;border:1px solid #e0eaf3;border-radius:8px;margin-bottom:25px;box-shadow:0 2px 5px rgba(0,0,0,.05)}.exchange-pair-item h3{color:var(--color-primary);border-bottom:2px solid var(--color-secondary);padding-bottom:5px;margin-top:0;margin-bottom:15px}.correlation-group{background-color:#f9f9f9;padding:15px;border:1px dashed #ccc;border-radius:6px}.correlation-item{display:flex;align-items:center;gap:15px;margin-bottom:10px}.correlation-item label{flex-basis:250px;min-width:250px}.correlation-item input{width:100px}.correlation-item .comment{font-size:.9em;color:#555;margin-left:10px}</style><div class="container"><header><h1>為替レート設定</h1><p>シミュレーションで使用する主要な為替ペアの変動パラメータを設定します。</header><main><div class="input-section"><div class="instruction-box"><p><strong>⚠️ 重要なお知らせ（シミュレーション前の確認事項）:</strong><p>シミュレーションの信頼性を確保するため、**シミュレーションを実行する直前に「現在レート」の項目を最新の市場レートに合わせて修正してください。**<p>「長期目標レート」は、長期的に回帰すると想定する水準です。「年間ボラティリティ」と「回帰速度」は、オルンシュタイン＝ウーレンベック過程で為替レートの変動を生成するために使用されます。</div><h2>為替ペアの変動設定 (Ornstein-Uhlenbeck過程のパラメータ)</h2><div id="exchangeRateContainer"></div><hr style="margin-top:40px;margin-bottom:40px"><h2>為替ペア間の相関係数</h2><p>為替ペア間の連動性を設定します。特別な理由がない限り、デフォルト値のまま利用することを推奨します。<div class="correlation-group"><div id="correlationContainer"></div></div><div class="form-actions"><button id="saveExchangeRateBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>/*******************************************************************
+            定数と初期データ
+        *******************************************************************/
+
+        // 設定対象の為替ペアのリスト（この順番で表示）
+        const EXCHANGE_PAIRS = [
+            'USD/JPY',
+            'EUR/JPY',
+            'EUR/USD'
+        ];
+
+        // 為替ペアのデフォルトパラメータ
+        const DEFAULT_EXCHANGE_RATES = {
+            'USD/JPY': { 
+                currentRate: 155.0,  
+                targetRate: 120.0,
+                volatility: 10.0,    // 10.0%
+                reversionSpeed: 0.3,
+                comment_vol: '適正範囲: 5.0 ～ 15.0',
+                comment_rev: '適正範囲: 0.1 ～ 1.0 (値が大きいほど目標レートへ速く戻る)'
+            },
+            'EUR/JPY': { 
+                currentRate: 180.0, 
+                targetRate: 138.0, // USD/JPY目標120.0、EUR/USD目標1.15から逆算: 120 * 1.15 = 138.0
+                volatility: 12.0,    // 12.0%
+                reversionSpeed: 0.4,
+                comment_vol: '適正範囲: 7.0 ～ 18.0',
+                comment_rev: '適正範囲: 0.1 ～ 1.0'
+            },
+            'EUR/USD': { 
+                currentRate: 1.15, 
+                targetRate: 1.15,
+                volatility: 8.0,     // 8.0%
+                reversionSpeed: 0.5,
+                comment_vol: '適正範囲: 5.0 ～ 10.0',
+                comment_rev: '適正範囲: 0.1 ～ 1.0'
+            }
+        };
+
+        // 為替ペア間のデフォルト相関係数
+        const DEFAULT_CORRELATIONS = [
+            { pairA: 'USD/JPY', pairB: 'EUR/JPY', keisu: 0.8 }, 
+            { pairA: 'USD/JPY', pairB: 'EUR/USD', keisu: 0.1 }, 
+            { pairA: 'EUR/JPY', pairB: 'EUR/USD', keisu: 0.5 } 
+        ];
+
+        /*******************************************************************
+            HTML生成・描画処理
+        *******************************************************************/
+
+        /**
+         * 為替ペアの入力フォームをHTMLにレンダリングする
+         * @param {Array} exchangeRates - ロードされた為替ペア設定データ
+         */
+        function renderExchangeRateInputs(exchangeRates) {
+            const container = document.getElementById('exchangeRateContainer');
+            let html = '';
+
+            EXCHANGE_PAIRS.forEach(pair => {
+                // ロードされたデータから現在のペアの設定を探す。なければデフォルトを使用。
+                const existingData = exchangeRates.find(d => d.pair === pair);
+                const defaults = DEFAULT_EXCHANGE_RATES[pair];
+                const data = existingData || defaults;
+
+                // 入力値を取得。あればその値、なければデフォルト値を使用
+                const currentRate = data.currentRate;
+                const targetRate = data.targetRate;
+                const volatility = data.volatility;
+                const reversionSpeed = data.reversionSpeed;
+
+                html += `
+                    <div class="exchange-pair-item" data-pair="${pair}">
+                        <h3>${pair}</h3>
+                        <div class="form-group">
+                            <label for="currentRate_${pair}">現在レート (シミュレーション開始時):</label>
+                            <input type="number" step="any" min="0" 
+                                class="current-rate-input"
+                                id="currentRate_${pair}" 
+                                value="${currentRate}" 
+                                placeholder="${currentRate}" 
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="targetRate_${pair}">長期目標レート:</label>
+                            <input type="number" step="any" min="0" 
+                                class="target-rate-input"
+                                id="targetRate_${pair}" 
+                                value="${targetRate}" 
+                                placeholder="${targetRate}" 
+                                required>
+                        </div>
+                        <div class="form-group">
+                            <label for="volatility_${pair}">年間ボラティリティ (%):</label>
+                            <input type="number" step="any" min="0" 
+                                class="volatility-input"
+                                id="volatility_${pair}" 
+                                value="${volatility}" 
+                                placeholder="${volatility}" 
+                                required>
+                            <p class="comment">${defaults.comment_vol}</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="reversionSpeed_${pair}">回帰速度 (θ):</label>
+                            <input type="number" step="any" min="0" max="1.0"
+                                class="reversion-speed-input"
+                                id="reversionSpeed_${pair}" 
+                                value="${reversionSpeed}" 
+                                placeholder="${reversionSpeed}" 
+                                required>
+                            <p class="comment">${defaults.comment_rev}</p>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        /**
+         * 相関係数の入力フォームをHTMLにレンダリングする
+         * @param {Array} correlations - ロードされた相関係数設定データ
+         */
+        function renderCorrelationInputs(correlations) {
+            const container = document.getElementById('correlationContainer');
+            let html = '';
+
+            // 既存データとデフォルトデータをマージする
+            const dataMap = new Map();
+            correlations.forEach(c => {
+                const key = [c.pairA, c.pairB].sort().join('|');
+                dataMap.set(key, c);
+            });
+
+            DEFAULT_CORRELATIONS.forEach(defaults => {
+                const key = [defaults.pairA, defaults.pairB].sort().join('|');
+                const data = dataMap.get(key) || defaults;
+                const id = `corr_${key.replace('/', '_').replace('|', '_')}`;
+                
+                html += `
+                    <div class="correlation-item">
+                        <label for="${id}">相関係数 (${defaults.pairA} と ${defaults.pairB}):</label>
+                        <input type="number" step="0.01" min="-1.0" max="1.0" 
+                            class="correlation-keisu-input"
+                            data-pair-a="${defaults.pairA}"
+                            data-pair-b="${defaults.pairB}"
+                            id="${id}" 
+                            value="${data.keisu}" 
+                            placeholder="${defaults.keisu}" 
+                            required>
+                        <span class="comment">適正範囲: -1.0 ～ 1.0 (デフォルト: ${defaults.keisu})</span>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+
+        /**
+         * Local Storageからデータをロードし、フォームに反映させる
+         */
+        function loadExchangeRates() {
+            const storedData = localStorage.getItem('fireSimulatorData');
+            let appData = {};
+            if (storedData) {
+                try {
+                    appData = JSON.parse(storedData);
+                } catch (e) {
+                    console.error("Local Storageデータの解析に失敗しました。", e);
+                }
+            }
+
+            // 為替ペア設定
+            // appData.exchangeRate が存在し、かつ有効な配列であれば使用
+            let exchangeRates = appData.exchangeRate && Array.isArray(appData.exchangeRate)
+                                ? appData.exchangeRate
+                                : [];
+            renderExchangeRateInputs(exchangeRates);
+
+            // 相関係数設定 (appData.exchangeRateCorrelations に保存されていると仮定)
+            let correlations = appData.exchangeRateCorrelations && Array.isArray(appData.exchangeRateCorrelations)
+                               ? appData.exchangeRateCorrelations
+                               : DEFAULT_CORRELATIONS;
+            renderCorrelationInputs(correlations);
+        }
+
+        /*******************************************************************
+            保存処理
+        *******************************************************************/
+
+        /**
+         * データを検証し、Local Storageに保存する
+         */
+        function saveExchangeRates() {
+            let isValid = true;
+            const exchangeRateData = [];
+            const correlationData = [];
+            
+            // 1. 為替ペアデータの収集と検証
+            document.querySelectorAll('.exchange-pair-item').forEach(item => {
+                const pair = item.getAttribute('data-pair');
+                const currentRateInput = item.querySelector('.current-rate-input');
+                const targetRateInput = item.querySelector('.target-rate-input');
+                const volatilityInput = item.querySelector('.volatility-input');
+                const reversionSpeedInput = item.querySelector('.reversion-speed-input');
+
+                // 値を取得し、数値に変換
+                const currentRate = parseFloat(currentRateInput.value);
+                const targetRate = parseFloat(targetRateInput.value);
+                const volatility = parseFloat(volatilityInput.value);
+                const reversionSpeed = parseFloat(reversionSpeedInput.value);
+                
+                // バリデーション
+                if (isNaN(currentRate) || isNaN(targetRate) || isNaN(volatility) || isNaN(reversionSpeed) || 
+                    currentRate <= 0 || targetRate <= 0 || volatility < 0 || reversionSpeed < 0 || reversionSpeed > 1.0) {
+                    
+                    isValid = false;
+                    currentRateInput.classList.add('error-input');
+                    targetRateInput.classList.add('error-input');
+                    volatilityInput.classList.add('error-input');
+                    reversionSpeedInput.classList.add('error-input');
+                } else {
+                    currentRateInput.classList.remove('error-input');
+                    targetRateInput.classList.remove('error-input');
+                    volatilityInput.classList.remove('error-input');
+                    reversionSpeedInput.classList.remove('error-input');
+                }
+
+                exchangeRateData.push({
+                    pair: pair,
+                    currentRate: currentRate,
+                    targetRate: targetRate,
+                    volatility: volatility,
+                    reversionSpeed: reversionSpeed
+                });
+            });
+
+            // 2. 相関係数データの収集と検証
+            document.querySelectorAll('.correlation-keisu-input').forEach(input => {
+                const pairA = input.getAttribute('data-pair-a');
+                const pairB = input.getAttribute('data-pair-b');
+                const keisu = parseFloat(input.value);
+
+                // バリデーション
+                if (isNaN(keisu) || keisu < -1.0 || keisu > 1.0) {
+                    isValid = false;
+                    input.classList.add('error-input');
+                } else {
+                    input.classList.remove('error-input');
+                }
+
+                correlationData.push({
+                    pairA: pairA,
+                    pairB: pairB,
+                    keisu: keisu
+                });
+            });
+
+
+            if (!isValid) {
+                alert('全ての項目に正しい数値を入力してください。特に為替レートは0より大きい値、回帰速度は0～1.0、相関係数は-1.0～1.0の範囲で入力が必要です。');
+                return;
+            }
+
+            // 3. Local Storageに保存
+            const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+            
+            // app.jsで追加した appData.exchangeRate に主要設定を保存
+            appData.exchangeRate = exchangeRateData; 
+            
+            // 相関係数は、将来の拡張性を考慮し、別のプロパティに保存
+            appData.exchangeRateCorrelations = correlationData;
+
+            localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+            alert('為替レート設定が保存されました！');
+        }
+
+        /*******************************************************************
+            ページLoad時の処理
+        *******************************************************************/
+        document.addEventListener('DOMContentLoaded', () => {
+            // データをロードしてフォームに反映
+            loadExchangeRates();
+
+            // 保存ボタンにイベントリスナーを設定
+            document.getElementById('saveExchangeRateBtn').addEventListener('click', saveExchangeRates);
+        });</script>

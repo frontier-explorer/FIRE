@@ -1,0 +1,426 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>保有証券</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><style>.instruction-box{background-color:#f0f8ff;border-left:5px solid #3498db;padding:15px;margin-bottom:20px;border-radius:4px}.stock-item input:disabled,.stock-item select:disabled{background-color:#e9ecef;cursor:not-allowed}.meigara-group{display:flex;gap:10px;align-items:flex-end}.meigara-group>div{flex:1}.meigara-group label{width:auto;margin-right:0}.custom-account-type-group{margin-top:5px}.custom-account-type-group input{width:100%}</style><div class="container"><header><h1>保有証券</h1><p>保有する金融資産の基本情報を入力します。</header><main><div class="input-section"><h2>保有銘柄一覧</h2><div class="instruction-box"><p>💡 <strong>リターンとボラティリティの注意点</strong><ul><li>**ベース銘柄名**と**口座種別**を入力すると、**銘柄名＜口座種別＞**としてデータが自動で生成されます。<li>**口座種別で「自由入力」を選択した場合、その下に表示される入力欄に任意の名称を入力してください。**<li>**単位口数、現在の価額、期待リターン、ボラティリティ** は、**ベース銘柄名**が同じであれば、**自動的に同期され、最初の項目以外は入力できません。**</ul></div><div id="stocksContainer"></div><br><div class="form-actions"><button id="addStockBtn"type="button"class="nav-button">銘柄を追加</button> <button id="saveStocksBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>// 指定された口座種別のリスト
+        const ACCOUNT_TYPES = [
+            '特定',
+            '一般',
+            '旧NISA',
+            '積立(新NISA)',
+            '成長(新NISA)',
+            '自由入力' // ユーザー指定の「自由入力」項目
+        ];
+
+        //為替ペアのリスト
+        const EXCHANGE_RATES = [
+            '',        // 空白（為替の影響を受けない・考慮しない）
+            'EUR/USD',
+            'USD/JPY',
+            'EUR/JPY'
+        ];
+
+
+        // 数値入力時にカンマ区切りに整形する関数
+        const formatNumberInput = (event) => {
+            const input = event.target;
+            let value = input.value.replace(/,/g, '');
+
+            if (isNaN(value) || value === '') {
+                input.value = '';
+                return;
+            }
+
+            const formattedValue = parseInt(value, 10).toLocaleString();
+            input.value = formattedValue;
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const stocksContainer = document.getElementById('stocksContainer');
+            const addStockBtn = document.getElementById('addStockBtn');
+            const saveStocksBtn = document.getElementById('saveStocksBtn');
+
+            // 銘柄名から口座種別を除去し、ベースの銘柄名（種類）を抽出する関数
+            const getBaseMeigaraName = (fullMeigara) => {
+                if (!fullMeigara) return '';
+                // Meigara: "S&P500＜特定＞" の形式から ＜特定＞ を除去
+                const match = fullMeigara.match(/^(.*)＜[^＞]+＞$/);
+                return match ? match[1].trim() : fullMeigara.trim();
+            };
+
+            // 保存データから MeigaraName と AccountType を逆算する関数
+            // 自由入力の値もここから抽出する
+            const parseFullMeigara = (fullMeigara) => {
+                if (!fullMeigara) return { MeigaraName: '', AccountType: '', CustomAccountValue: '' };
+
+                const match = fullMeigara.match(/^(.*)＜([^＞]+)＞$/);
+                if (!match) {
+                    return { MeigaraName: fullMeigara.trim(), AccountType: '', CustomAccountValue: '' };
+                }
+
+                const meigaraName = match[1].trim();
+                const accountTypeInStorage = match[2].trim();
+
+                // 格納されている口座種別が、固定リストに含まれているかチェック
+                if (ACCOUNT_TYPES.includes(accountTypeInStorage) && accountTypeInStorage !== '自由入力') {
+                    // 固定リストに含まれる場合は、そのままAccountTypeとして返す
+                    return { MeigaraName: meigaraName, AccountType: accountTypeInStorage, CustomAccountValue: '' };
+                } else if (accountTypeInStorage === '自由入力') {
+                    // 格納値が '自由入力' の場合（これは旧バージョンでは発生しないが互換性のため）
+                    return { MeigaraName: meigaraName, AccountType: '自由入力', CustomAccountValue: '' };
+                } else {
+                    // 格納されている口座種別が固定リストになく、自由入力で保存されたと見なす
+                    // ドロップダウンの選択は「自由入力」にし、格納されていた値をカスタム値として表示
+                    return { MeigaraName: meigaraName, AccountType: '自由入力', CustomAccountValue: accountTypeInStorage };
+                }
+            };
+
+            // 【新機能】カスタム入力欄の表示を切り替える関数
+            const toggleCustomAccountInput = (stockItem, initialValue = '') => {
+                const select = stockItem.querySelector('.account-type');
+                const customGroup = stockItem.querySelector('.custom-account-type-group');
+                const customInput = stockItem.querySelector('.custom-account-type-input');
+
+                if (select.value === '自由入力') {
+                    customGroup.style.display = 'block';
+                    customInput.disabled = false;
+                    customInput.required = true;
+                    // ロード時の初期値を設定
+                    if (initialValue) {
+                        customInput.value = initialValue;
+                    }
+                } else {
+                    customGroup.style.display = 'none';
+                    customInput.disabled = true;
+                    customInput.required = false;
+                }
+            };
+
+            // 入力制限（disabled）の状態を更新する関数
+            const updateInputRestriction = () => {
+                const stockItems = document.querySelectorAll('.stock-item');
+                const firstBaseMeigaraMap = new Map(); // Key: ベース銘柄名, Value: 最初に出現したアイテムのインデックス
+
+                stockItems.forEach((item, index) => {
+                    const baseMeigara = item.querySelector('.base-meigara-name').value;
+
+                    // 同期対象の入力欄をすべて取得
+                    const syncInputs = item.querySelectorAll('.synchronized-input');
+
+                    if (!baseMeigara) {
+                        syncInputs.forEach(input => input.disabled = false);
+                        return;
+                    }
+
+                    if (!firstBaseMeigaraMap.has(baseMeigara)) {
+                        firstBaseMeigaraMap.set(baseMeigara, index);
+                        syncInputs.forEach(input => input.disabled = false);
+                    } else {
+                        syncInputs.forEach(input => input.disabled = true);
+
+                        // 【同期処理】無効化する前に、最初の銘柄の値を取得して強制的に同期する
+                        const firstItemIndex = firstBaseMeigaraMap.get(baseMeigara);
+                        const firstItem = stockItems[firstItemIndex];
+
+                        syncInputs.forEach(targetInput => {
+                            const fieldType = targetInput.dataset.syncField;
+                            const sourceInput = firstItem.querySelector(`[data-sync-field="${fieldType}"]`);
+                            if (sourceInput) {
+                                targetInput.value = sourceInput.value;
+                            }
+                        });
+                    }
+                });
+            };
+
+            // 同一銘柄名の入力値を同期する関数 (Inputイベントで実行)
+            const synchronizeInputs = (event) => {
+                const changedInput = event.target;
+                const isNumeric = changedInput.getAttribute('inputmode') === 'numeric' || changedInput.type === 'number';
+                const fieldType = changedInput.dataset.syncField;
+                const stockItem = changedInput.closest('.stock-item');
+                const baseMeigara = stockItem.querySelector('.base-meigara-name').value;
+
+                if (!baseMeigara) return;
+                if (changedInput.disabled) return;
+
+                let newValue = isNumeric
+                    ? (changedInput.type === 'text' ? changedInput.value.replace(/,/g, '') : changedInput.value)
+                    : changedInput.value;
+
+                // 同じベース銘柄を持つすべての入力フィールドを更新
+                document.querySelectorAll('.stock-item').forEach(item => {
+                    const itemBaseMeigara = item.querySelector('.base-meigara-name').value;
+
+                    if (itemBaseMeigara === baseMeigara) {
+                        const targetInput = item.querySelector(`[data-sync-field="${fieldType}"]`);
+                        if (targetInput && targetInput !== changedInput) {
+                            targetInput.value = newValue;
+                            if (targetInput.type === 'text' && isNumeric) {
+                                // カンマフォーマットを適用し直す
+                                const formattedValue = newValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                                targetInput.value = formattedValue;
+                            }
+                        }
+                    }
+                });
+
+
+                // 変更元の入力欄にカンマフォーマットを再適用 (数値入力の場合)
+                if (changedInput.type === 'text' && isNumeric) {
+                    changedInput.value = newValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                }
+            };
+
+            // 新しい銘柄アイテムにイベントリスナーを設定する関数
+            const setupStockItemListeners = (stockItem) => {
+                const baseMeigaraInput = stockItem.querySelector('.base-meigara-name');
+                const accountTypeSelect = stockItem.querySelector('.account-type');
+
+                // 銘柄名変更時や口座種別変更時に制限状態を更新
+                baseMeigaraInput.addEventListener('input', updateInputRestriction);
+                accountTypeSelect.addEventListener('change', () => {
+                    updateInputRestriction();
+                    toggleCustomAccountInput(stockItem); // 自由入力欄の表示/非表示を切り替える
+                });
+
+                // 同期対象の入力欄にリスナーを設定
+                stockItem.querySelectorAll('.synchronized-input').forEach(input => {
+                    input.addEventListener('input', synchronizeInputs);
+                });
+
+                // 数値入力のカンマフォーマットリスナーを設定
+                stockItem.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    input.addEventListener('input', formatNumberInput);
+                });
+            };
+
+            // createStockItem 関数の修正: MeigaraNameとAccountTypeを分離
+            const createStockItem = (index, stockData = {}) => {
+                const stockItem = document.createElement('div');
+                stockItem.classList.add('stock-item');
+
+                // 既存データから MeigaraName, AccountType, CustomAccountValue を分離
+                const { MeigaraName: baseMeigara, AccountType: accountType, CustomAccountValue: customAccountValue } = parseFullMeigara(stockData.Meigara);
+
+                // 銘柄名が設定されていれば、保存されている値をカンマフォーマットしてから表示
+                const formatIfNumeric = (key) => {
+                    const value = stockData[key];
+                    // 数値として保存されているものをtoLocaleStringでカンマ区切りにする
+                    return value !== undefined && value !== null && !isNaN(value) ? value.toLocaleString() : '';
+                };
+
+
+                // 為替ペアの初期値を取得
+                const exchangeRate = stockData.ExchangeRate || '';
+                const exchangeOptions = EXCHANGE_RATES.map(rate => 
+                    `<option value="${rate}" ${rate === exchangeRate ? 'selected' : ''}>${rate === '' ? '空白（為替の影響を受けない）' : rate}</option>`
+                ).join('');
+
+
+                // 口座種別オプションを生成
+                const accountOptions = ACCOUNT_TYPES.map(type =>
+                    `<option value="${type}" ${type === accountType ? 'selected' : ''}>${type}</option>`
+                ).join('');
+
+                // 自由入力欄の初期表示状態を決定
+                const isCustomAccount = accountType === '自由入力';
+                const customInputDisplay = isCustomAccount ? 'block' : 'none';
+
+                stockItem.innerHTML = `
+                    <h3>銘柄 ${index + 1}</h3>
+                    
+                    <div class="meigara-group">
+                        <div class="form-group" style="flex: 2;">
+                            <label>ベース銘柄名:</label>
+                            <input type="text" class="base-meigara-name" value="${baseMeigara}" required>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>口座種別:</label>
+                            <select class="account-type" required>
+                                <option value="" disabled ${!accountType ? 'selected' : ''}>選択してください</option>
+                                ${accountOptions}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-account-type-group" style="display: ${customInputDisplay}; margin-bottom: 15px;">
+                        <label>自由入力（口座名）:</label>
+                        <input type="text" class="custom-account-type-input" placeholder="任意の口座名を入力してください" value="${customAccountValue}" ${isCustomAccount ? '' : 'disabled'}>
+                    </div>
+
+                    <!-- 為替 -->
+                    <div class="form-group">
+                        <label for="exchangeRate_${index}">為替ペア:</label>
+                        <select id="exchangeRate_${index}" class="exchange-rate-select synchronized-input" data-sync-field="ExchangeRate" required>${exchangeOptions}</select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>保有口数:</label>
+                        <input type="text" class="kuchisu-input" value="${formatIfNumeric('Kuchisu')}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>単位口数:</label>
+                        <input type="text" class="tani-input synchronized-input" data-sync-field="Tani" value="${formatIfNumeric('Tani')}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>単位口数当たりの現在の価額（円）:</label>
+                        <input type="text" class="current-value-input synchronized-input" data-sync-field="CurrentValuePerUnit" value="${formatIfNumeric('CurrentValuePerUnit')}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>平均取得価額（円）:</label>
+                        <input type="text" class="average-price-input" value="${formatIfNumeric('AveragePrice')}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>期待リターン（年率%）:</label>
+                        <input type="number" step="0.01" class="return-input synchronized-input" data-sync-field="Return" value="${stockData.Return || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>ボラティリティ（年率%）:</label>
+                        <input type="number" step="0.01" class="volatility-input synchronized-input" data-sync-field="Volatility" value="${stockData.Volatility || ''}" required>
+                    </div>
+                    <div class="form-group tax-start-group">
+            			<label for="month-input">税金開始時期（年月）:</label>
+            			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${stockData.fromMonth || ''}">
+                        <p style="font-size: 12px; color: #888; margin-left: 10px;">
+                            新NISA成長・新NISA積み立て:空欄にしてください。<br>
+                        </p>
+                    </div>
+
+                    <button type="button" class="remove-stock-btn">この銘柄を削除</button>
+                `;
+
+                stockItem.querySelector('.remove-stock-btn').addEventListener('click', () => {
+                    stockItem.remove();
+                    updateStockNumbers();
+                    updateInputRestriction(); // 削除後も制限状態を更新
+                });
+
+                // 新しいアイテムにリスナーを設定
+                setupStockItemListeners(stockItem);
+                // ロード時の初期表示制御
+                toggleCustomAccountInput(stockItem, customAccountValue);
+
+                return stockItem;
+            };
+
+            const updateStockNumbers = () => {
+                const stockItems = document.querySelectorAll('.stock-item');
+                stockItems.forEach((item, index) => {
+                    item.querySelector('h3').textContent = `銘柄 ${index + 1}`;
+                });
+            };
+
+            const loadStocks = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const stocks = appData.stocks || [];
+                stocksContainer.innerHTML = '';
+                if (stocks.length > 0) {
+                    stocks.forEach((stock, index) => {
+                        const stockItem = createStockItem(index, stock);
+                        stocksContainer.appendChild(stockItem);
+                    });
+                } else {
+                    addStock();
+                }
+                updateStockNumbers();
+                updateInputRestriction(); // ロード完了後に制限状態を適用
+            };
+
+            const addStock = () => {
+                const index = stocksContainer.children.length;
+                const stockItem = createStockItem(index);
+                stocksContainer.appendChild(stockItem);
+                updateStockNumbers();
+                updateInputRestriction(); // 追加後も制限状態を更新
+            };
+            addStockBtn.addEventListener('click', () => addStock());
+
+            saveStocksBtn.addEventListener('click', () => {
+                const stocksData = [];
+                let isValid = true;
+                document.querySelectorAll('.stock-item').forEach(item => {
+                    const baseMeigaraName = item.querySelector('.base-meigara-name').value.trim();
+                    const accountTypeSelect = item.querySelector('.account-type');
+                    const selectedAccountType = accountTypeSelect.value.trim();
+                    const customAccountInput = item.querySelector('.custom-account-type-input');
+
+                    let finalAccountType;
+
+                    // 最終的に保存する口座種別を決定
+                    if (selectedAccountType === '自由入力') {
+                        // 「自由入力」が選択されている場合は、カスタム入力欄の値を使用
+                        finalAccountType = customAccountInput.value.trim();
+                    } else {
+                        // 固定リストから選択されている場合は、その値を使用
+                        finalAccountType = selectedAccountType;
+                    }
+
+                    // 最終的に保存するMeigara（simulate.htmlが期待する形式）を生成
+                    const fullMeigara = `${baseMeigaraName}＜${finalAccountType}＞`;
+
+                    const kuchisuValue = item.querySelector('.kuchisu-input').value;
+                    const taniValue = item.querySelector('.tani-input').value;
+                    const currentValueValue = item.querySelector('.current-value-input').value;
+                    const averagePriceValue = item.querySelector('.average-price-input').value;
+                    const returnRate = item.querySelector('.return-input').value;
+                    const volatility = item.querySelector('.volatility-input').value;
+                    const fromMonth = item.querySelector('.tax-from-month-input');
+                    //為替ペアの値を取得
+                    const exchangeRate = item.querySelector('.exchange-rate-select').value;
+
+                    // カンマを除去して数値に変換
+                    const kuchisu = parseInt(kuchisuValue.replace(/,/g, ''), 10);
+                    const tani = parseInt(taniValue.replace(/,/g, ''), 10);
+                    const currentValuePerUnit = parseInt(currentValueValue.replace(/,/g, ''), 10);
+                    const averagePrice = parseInt(averagePriceValue.replace(/,/g, ''), 10);
+
+                    let taxStartYear = null;
+                    let taxStartMonth = null;
+
+                    // バリデーションチェック
+                    if (!baseMeigaraName || !finalAccountType || isNaN(kuchisu) || isNaN(tani) || isNaN(currentValuePerUnit) || isNaN(averagePrice) || isNaN(parseFloat(returnRate)) || isNaN(parseFloat(volatility)) || kuchisu < 0 || tani <= 0 || currentValuePerUnit <= 0 || averagePrice < 0 || parseFloat(returnRate) < -100 || parseFloat(volatility) < 0) {
+                        alert('全ての項目に正しい数値を入力/選択してください。銘柄名または口座種別が空欄です。');
+                        isValid = false;
+                        return;
+                    }
+
+                    let w_fromMonth = null;
+                    if (fromMonth.value.trim() !== "") {
+                        w_fromMonth = fromMonth.value.trim();
+                        let w = parseInt(compareMonthAndGetCurrent(w_fromMonth), 10);
+                        taxStartYear = Math.floor(w / 12);
+                        taxStartMonth = (w % 12);
+                    }
+                    //新NISA以外で、税金開始年月日が入っていないときは、最初から税金を適用
+                    else if (finalAccountType !== "積立(新NISA)" && finalAccountType !== "成長(新NISA)") {
+                        taxStartYear = 0;
+                        taxStartMonth = 0;
+                    }
+
+                    stocksData.push({
+                        Meigara: fullMeigara, // simulate.htmlが期待する形式
+                        Kuchisu: kuchisu,
+                        Tani: tani,
+                        CurrentValuePerUnit: currentValuePerUnit,
+                        AveragePrice: averagePrice,
+                        Return: parseFloat(returnRate),
+                        Volatility: parseFloat(volatility),
+                        TaxStartYear: taxStartYear,
+                        TaxStartMonth: taxStartMonth,
+                        fromMonth: w_fromMonth,
+                        ExchangeRate: exchangeRate  //為替
+                    });
+                });
+
+                if (!isValid) {
+                    return;
+                }
+
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.stocks = stocksData;
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('保有証券の設定が保存されました！');
+
+                // 保存後、再表示と再制限
+                loadStocks();
+            });
+
+            loadStocks();
+        });</script>

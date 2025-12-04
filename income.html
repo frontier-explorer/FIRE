@@ -1,0 +1,128 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>収入設定</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><div class="container"><header><h1>収入設定</h1><p>毎月の収入イベントを設定します。</header><main><div class="input-section"><h2>収入イベント一覧</h2><div class="instruction-box"><p><strong>💡 入力方法:</strong><ul><li><strong>収入が発生する年・月:</strong> 収入が発生し始めるタイミングを設定します。<li><strong>収入が終了する年・月:</strong> 収入が終了するタイミングを設定します。<li><strong>収入が終了する年・月が空欄:</strong> 収入が発生する年・月からシミュレーション期間の終わりまで、毎月収入が発生し続けます。</ul></div><div id="incomeContainer"></div><br><div class="form-actions"><button id="addIncomeBtn"type="button"class="nav-button">収入を追加</button> <button id="saveIncomeBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+            const incomeContainer = document.getElementById('incomeContainer');
+            const addIncomeBtn = document.getElementById('addIncomeBtn');
+            const saveIncomeBtn = document.getElementById('saveIncomeBtn');
+
+            const createIncomeItem = (index, incomeData = {}) => {
+                const incomeItem = document.createElement('div');
+                incomeItem.classList.add('income-item');
+                incomeItem.innerHTML = `
+                    <h3>収入イベント ${index + 1}</h3>
+                    <div class="form-group input-group">
+            			<label for="month-input">収入が発生する年・月を選択:</label>
+            			<input type="month" class="income-from-month-input" name="selected-from-month"  value="${incomeData.fromMonth || ''}">
+                    </div>
+                    <div class="form-group input-group">
+            			<label for="month-input">収入が終了する年・月を選択(最終の収集が発生する年月日):</label>
+            			<input type="month" class="income-to-month-input" name="selected-to-month"  value="${incomeData.toMonth || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>収入額（円/月）:</label>
+                        <input type="text" class="income-amount" value="${incomeData.amount || ''}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>理由（任意）:</label>
+                        <input type="text" class="income-reason" value="${incomeData.reason || ''}">
+                    </div>
+                    <button type="button" class="remove-btn">削除</button>
+                `;
+
+                incomeItem.querySelector('.remove-btn').addEventListener('click', () => {
+                    incomeItem.remove();
+                    updateIncomeNumbers();
+                });
+
+                return incomeItem;
+            };
+
+            const updateIncomeNumbers = () => {
+                const items = document.querySelectorAll('.income-item');
+                items.forEach((item, index) => {
+                    item.querySelector('h3').textContent = `収入イベント ${index + 1}`;
+                });
+            };
+
+            const loadIncomes = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const income = appData.income || [];
+                incomeContainer.innerHTML = '';
+                if (income.length > 0) {
+                    income.forEach((data, index) => {
+                        incomeContainer.appendChild(createIncomeItem(index, data));
+                    });
+                } else {
+                    incomeContainer.appendChild(createIncomeItem(0));
+                }
+                updateIncomeNumbers();
+                document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    if (input.value) {
+                        const value = input.value.replace(/,/g, '');
+                        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+                    input.addEventListener('input', formatNumberInput);
+                });
+            };
+
+            addIncomeBtn.addEventListener('click', () => {
+                const index = incomeContainer.children.length;
+                const newIncomeItem = createIncomeItem(index);
+                incomeContainer.appendChild(newIncomeItem);
+                updateIncomeNumbers();
+                newIncomeItem.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    input.addEventListener('input', formatNumberInput);
+                });
+            });
+
+            saveIncomeBtn.addEventListener('click', () => {
+                const incomeData = [];
+                let isValid = true;
+
+                document.querySelectorAll('.income-item').forEach(item => {
+                    const fromMonth = item.querySelector('.income-from-month-input');
+                    const toMonth = item.querySelector('.income-to-month-input');
+                    const amountInput = item.querySelector('.income-amount');
+                    const reasonInput = item.querySelector('.income-reason');
+
+                    const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
+                    const reason = reasonInput.value;
+
+                    if (isValidDateRange(fromMonth.value, toMonth.value) == false) {
+                        alert('開始年月は必須です。終了年月は空白もしくは、開始年月と同じかそれ以降を入力してください。');
+                        isValid = false;
+                        fromMonth.classList.add('error-input');
+                        toMonth.classList.add('error-input');
+                        return;
+                    }
+                    fromMonth.classList.remove('error-input');
+                    toMonth.classList.remove('error-input');
+
+                    const startTotalMonths = compareMonthAndGetCurrent(fromMonth.value);
+                    let endTotalMonths = null;
+                    let toMonthDate = null;
+                    if (!toMonth || toMonth.value.trim() !== "") {
+                        endTotalMonths = compareMonthAndGetCurrent(toMonth.value);
+                        toMonthDate = toMonth.value;
+                    }
+
+                    incomeData.push({
+                        startTotalMonths: startTotalMonths,
+                        endTotalMonths: endTotalMonths,
+                        amount: amount,
+                        reason: reason,
+                        fromMonth: fromMonth.value,
+                        toMonth: toMonthDate
+                    });
+                });
+
+                if (!isValid) {
+                    return;
+                }
+
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.income = incomeData.sort((a, b) => a.startTotalMonths - b.startTotalMonths);
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('収入の設定が保存されました！');
+            });
+
+            loadIncomes();
+        });</script>

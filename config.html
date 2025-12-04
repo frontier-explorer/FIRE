@@ -1,0 +1,106 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>基本設定</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><div class="container"><header><h1>基本設定</h1><p>シミュレーションの基本的な条件を設定します。</header><main><div class="input-section"><h2>シミュレーション基本情報</h2><form id="configForm"><div class="form-group"><label for="period">シミュレーション期間（年）:</label> <input type="number"id="period"name="period"value="20"min="1"max="100"required></div><div class="form-group"><label for="times">シミュレーション回数（回）:　<br>※シミュレートが長々終わらないときは100回に減らすなどして、実行環境にあわせてください。</label> <input type="number"id="times"name="times"value="200"min="1"max="1000"required></div><div class="form-group"><label for="birthDate">誕生日:</label> <input type="date"id="birthDate"name="birthDate"required></div><div class="form-group"><label for="cash">保有現金（円）:</label> <input id="cash"name="cash"inputmode="numeric"pattern="[0-9,]*"required></div><div class="form-group"><label for="inflationRate">出費インフレ率（%）:</label> <input type="number"id="inflationRate"name="inflationRate"value="2.0"min="0"max="10"step="0.1"required></div><button type="submit"class="save-button">設定を保存</button><br><center><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></center></form></div></main></div><script>function formatNumberWithCommas(value) {
+    		if (value === null || value === undefined || value === '') return '0';
+    		// エラー対策: 値を文字列に変換してからカンマを削除
+    		const numStr = String(value).replace(/,/g, '');
+    
+    		// 数値に変換して、toLocaleString()で整形
+		const num = parseInt(numStr, 10);
+		if (isNaN(num)) return numStr; // 数値に変換できない場合はそのまま返す
+    
+		// toLocaleString() でカンマ区切り（小数点なし）の文字列を生成
+		return num.toLocaleString('ja-JP', { maximumFractionDigits: 0 });
+	}
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('configForm');
+            const cashInput = document.getElementById('cash');
+
+            
+            // 入力時のリアルタイム整形イベントリスナー
+            cashInput.addEventListener('input', (event) => {
+                const oldValue = event.target.value;
+                
+                // 既にカンマを整形した後の値なら処理をスキップ (無限ループ防止)
+                if (oldValue === formatNumberWithCommas(oldValue)) return;
+                
+                // カーソル位置を記憶
+                const start = event.target.selectionStart;
+                const oldLength = oldValue.length;
+                
+                // カンマ区切りに整形
+                const formattedValue = formatNumberWithCommas(oldValue);
+                
+                // 整形後の値をセット
+                event.target.value = formattedValue;
+                
+                // カーソル位置の調整
+                const newLength = formattedValue.length;
+                const diff = newLength - oldLength;
+                
+                // カーソル位置を新しい値に合わせる
+                event.target.setSelectionRange(start + diff, start + diff);
+            });
+
+            // ローカルストレージから設定を読み込み、フォームに反映
+	window.loadConfig = () => {
+    		const storedData = localStorage.getItem('fireSimulatorData');
+    		if (storedData) {
+        		const loadedData = JSON.parse(storedData);
+        		const config = loadedData.config || {};
+        
+	      		document.getElementById('period').value = config.period || 20;
+	        	document.getElementById('times').value = config.times || 1000;
+        		document.getElementById('birthDate').value = config.birthDate || '';
+        
+	        	const cashValue = config.cash;
+        		// cashが数値または文字列であることを確認し、カンマ区切りで表示
+	        	if (cashValue !== undefined && cashValue !== null) {
+           	 	// エラー対策: cashValueが文字列ではない（例：数値）場合は、toString()で文字列にしてからカンマ区切り処理を行う
+        	    		const cashStr = typeof cashValue === 'string' ? cashValue : String(cashValue);
+	            		document.getElementById('cash').value = formatNumberWithCommas(cashStr);
+        		} else {
+ 		       	    document.getElementById('cash').value = formatNumberWithCommas(0);
+	        	}
+
+			// inflationRateを反映。値がない場合は app.jsのデフォルト値 (2.0) を使用
+			document.getElementById('inflationRate').value = config.inflationRate !== undefined ? config.inflationRate : 2.0;
+		    }
+	};
+            loadConfig();
+
+            // フォームの送信（設定の保存）を処理
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                
+                const period = document.getElementById('period').value;
+                const times = document.getElementById('times').value;
+                const birthDate = document.getElementById('birthDate').value;
+                const cashValue = document.getElementById('cash').value; // カンマ付きの文字列
+		const inflationRate = document.getElementById('inflationRate').value;
+
+		if (!period || !times || !birthDate || !cashValue || !inflationRate) { // 条件にinflationRateを追加
+                    alert('全ての項目を入力してください。');
+                    return;
+                }
+                
+                //重要なポイント: カンマを削除して数値に変換 (メモリに保存する数値として)
+                const cash = parseInt(cashValue.replace(/,/g, ''), 10);
+                
+                if (isNaN(cash)) {
+                    alert('保有現金の入力が不正です。数字のみを入力してください。');
+                    return;
+                }
+
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.config = {
+                    period: parseInt(period, 10),
+                    times: parseInt(times, 10),
+                    birthDate: birthDate,
+                    cash: cash, // 数値として保存されます
+		    inflationRate: parseFloat(inflationRate)
+                };
+                
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('基本設定が保存されました！');
+            });
+        });</script>

@@ -1,0 +1,132 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>大きな出費</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><div class="container"><header><h1>大きな出費</h1><p>予定されている一時的な大きな出費を設定します。</header><main><div class="input-section"><h2>大きな出費一覧</h2><div id="bigExpenseContainer"></div><br><div class="form-actions"><button id="addBigExpenseBtn"type="button"class="nav-button">出費を追加</button> <button id="saveBigExpenseBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>/*******************************************************************
+
+            ページLoad時の処理
+
+        *******************************************************************/
+        document.addEventListener('DOMContentLoaded', () => {
+            const bigExpenseContainer = document.getElementById('bigExpenseContainer');
+            const addBigExpenseBtn = document.getElementById('addBigExpenseBtn');
+            const saveBigExpenseBtn = document.getElementById('saveBigExpenseBtn');
+
+            // 大きな出費アイテムのHTMLを生成する関数
+            const createBigExpenseItem = (index, bigExpenseData = {}) => {
+                const bigExpenseItem = document.createElement('div');
+                bigExpenseItem.classList.add('big-expense-item');
+                bigExpenseItem.innerHTML = `
+                    <h3>出費設定 ${index + 1}</h3>
+                    <div class="form-group">
+                        <label for="month-input">出費が発生する年・月を選択:</label>
+                        <input type="month" class="big-expense-month-input" name="selected-month"  value="${bigExpenseData.from_month || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>大きな出費額（円）:</label>
+                        <input type="text" class="big-expense-amount" value="${bigExpenseData.amount || ''}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <div class="form-group">
+                        <label>理由（任意）:</label>
+                        <input type="text" class="big-expense-reason" value="${bigExpenseData.reason || ''}">
+                    </div>
+                    <button type="button" class="remove-btn">削除</button>
+                `;
+
+                // 削除ボタンのイベントリスナーを設定
+                bigExpenseItem.querySelector('.remove-btn').addEventListener('click', () => {
+                    bigExpenseItem.remove();
+                    // 削除後に番号を振り直す
+                    updateBigExpenseNumbers();
+                });
+
+                return bigExpenseItem;
+            };
+
+            // フォームの番号を更新する関数
+            const updateBigExpenseNumbers = () => {
+                const items = document.querySelectorAll('.big-expense-item');
+                items.forEach((item, index) => {
+                    item.querySelector('h3').textContent = `出費設定 ${index + 1}`;
+                });
+            };
+
+            // ローカルストレージからデータを読み込み、フォームに反映
+            const loadBigExpense = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const bigExpense = appData.bigExpense || [];
+                bigExpenseContainer.innerHTML = '';
+                if (bigExpense.length > 0) {
+                    bigExpense.forEach((data, index) => {
+                        bigExpenseContainer.appendChild(createBigExpenseItem(index, data));
+                    });
+                } else {
+                    bigExpenseContainer.appendChild(createBigExpenseItem(0));
+                }
+                updateBigExpenseNumbers();
+
+                // 金額入力欄のフォーマットを再適用
+                document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    //初回１回のみ３桁毎の数値に変換する処理
+                    if (input.value) {
+                        const value = input.value.replace(/,/g, '');
+                        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+                    //numericの設定になっているものに、入力の都度、３桁毎の数値に変換する処理を呼び出す。
+                    input.addEventListener('input', formatNumberInput);
+                });
+            };
+
+            addBigExpenseBtn.addEventListener('click', () => {
+                const index = bigExpenseContainer.children.length;
+                const newExpenseItem = createBigExpenseItem(index);
+                bigExpenseContainer.appendChild(newExpenseItem);
+                updateBigExpenseNumbers();
+                // 新しい入力欄にもフォーマット処理を適用
+                newExpenseItem.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    input.addEventListener('input', formatNumberInput);
+                });
+            });
+
+            saveBigExpenseBtn.addEventListener('click', () => {
+                const bigExpenseData = [];
+                let errorFlg = false;
+
+                document.querySelectorAll('.big-expense-item').forEach(item => {
+                    const from_monthInput = item.querySelector('.big-expense-month-input');
+                    const amountInput = item.querySelector('.big-expense-amount');
+                    const reasonInput = item.querySelector('.big-expense-reason');
+
+                    const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
+                    const reason = reasonInput.value;
+
+                    // 入力エラーチェック
+                    if (from_monthInput.value == "" || isNaN(amount) || amount < 0) {
+                        //エラーになった入力欄のスタイルを変更
+                        from_monthInput.classList.add('error-input');
+                        amountInput.classList.add('error-input');
+                        alert('全ての項目に正しい設定を入力してください。');
+                        errorFlg = true;
+                        return;
+                    }
+                    // エラーがない状態の場合はスタイルを元に戻す
+                    from_monthInput.classList.remove('error-input');
+                    amountInput.classList.remove('error-input');
+
+                    var w_month = compareMonthAndGetCurrent(from_monthInput.value);
+
+                    bigExpenseData.push({
+                        month: w_month,
+                        amount: amount,
+                        reason: reason,
+                        from_month: from_monthInput.value
+                    });
+                });
+
+                if (errorFlg == true) {
+                    return;
+                }
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.bigExpense = bigExpenseData.sort((a, b) => a.month - b.month); // 総月数でソート
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('大きな出費の設定が保存されました！');
+            });
+
+            loadBigExpense();
+        });</script>

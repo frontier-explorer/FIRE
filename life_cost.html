@@ -1,0 +1,109 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>生活費</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><style>.life-cost-item{padding:15px;border:1px solid #ddd;border-radius:8px;margin-bottom:20px}.life-cost-item h3{margin-top:0;color:#34495e}.life-cost-item .remove-btn{background-color:#95a5a6;margin-top:10px;font-size:14px;padding:8px 15px}.input-group{display:flex;align-items:center;gap:10px}.input-group label{margin-bottom:0;white-space:nowrap}.input-group input{width:auto;flex-grow:1}.instruction-box{background-color:#f0f8ff;border-left:5px solid #3498db;padding:15px;margin-bottom:20px;border-radius:4px}</style><div class="container"><header><h1>生活費</h1><p>毎月の生活費を設定します。</header><main><div class="input-section"><h2>生活費イベント一覧</h2><div class="instruction-box"><p><strong>💡 入力方法:</strong><ul><li><strong>生活費が発生する年・月:</strong> 設定した生活費が適用され始めるタイミングです。<li>この生活費は、**次の適用開始時期が設定されるまで**、継続して適用されます。</ul></div><div id="lifeCostContainer"></div><br><div class="form-actions"><button id="addLifeCostBtn"type="button"class="nav-button">生活費を追加</button> <button id="saveLifeCostBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+            const lifeCostContainer = document.getElementById('lifeCostContainer');
+            const addLifeCostBtn = document.getElementById('addLifeCostBtn');
+            const saveLifeCostBtn = document.getElementById('saveLifeCostBtn');
+
+            const createLifeCostItem = (index, lifeCostData = {}) => {
+                const lifeCostItem = document.createElement('div');
+                lifeCostItem.classList.add('life-cost-item');
+                lifeCostItem.innerHTML = `
+                    <h3>生活費設定 ${index + 1}</h3>
+                    <div class="form-group input-group">
+            			<label for="month-input">生活費が発生する年・月を選択:</label>
+            			<input type="month" class="life-cost-from-month-input" name="selected-from-month"  value="${lifeCostData.fromMonth || ''}">
+                    </div>
+                    <div class="form-group input-group">
+                        <label>金額（円/月）:</label>
+                        <input type="text" class="life-cost-amount" value="${lifeCostData.amount || ''}" inputmode="numeric" pattern="[0-9,]*" required>
+                    </div>
+                    <button type="button" class="remove-btn">削除</button>
+                `;
+
+                lifeCostItem.querySelector('.remove-btn').addEventListener('click', () => {
+                    lifeCostItem.remove();
+                    updateLifeCostNumbers();
+                });
+
+                return lifeCostItem;
+            };
+
+            const updateLifeCostNumbers = () => {
+                const items = document.querySelectorAll('.life-cost-item');
+                items.forEach((item, index) => {
+                    item.querySelector('h3').textContent = `生活費設定 ${index + 1}`;
+                });
+            };
+
+            const loadLifeCost = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const lifeCost = appData.lifeCost || [];
+                lifeCostContainer.innerHTML = '';
+                if (lifeCost.length > 0) {
+                    lifeCost.forEach((data, index) => {
+                        lifeCostContainer.appendChild(createLifeCostItem(index, data));
+                    });
+                } else {
+                    lifeCostContainer.appendChild(createLifeCostItem(0));
+                }
+                updateLifeCostNumbers();
+                document.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    if (input.value) {
+                        const value = input.value.replace(/,/g, '');
+                        input.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    }
+                    input.addEventListener('input', formatNumberInput);
+                });
+            };
+
+            addLifeCostBtn.addEventListener('click', () => {
+                const index = lifeCostContainer.children.length;
+                const newLifeCostItem = createLifeCostItem(index);
+                lifeCostContainer.appendChild(newLifeCostItem);
+                updateLifeCostNumbers();
+                newLifeCostItem.querySelectorAll('input[inputmode="numeric"]').forEach(input => {
+                    input.addEventListener('input', formatNumberInput);
+                });
+            });
+
+            saveLifeCostBtn.addEventListener('click', () => {
+                const lifeCosts = [];
+                let isValid = true;
+
+                document.querySelectorAll('.life-cost-item').forEach(item => {
+                    const fromMonth = item.querySelector('.life-cost-from-month-input');
+                    const amountInput = item.querySelector('.life-cost-amount');
+
+                    const amount = parseInt(amountInput.value.replace(/,/g, ''), 10);
+
+                    if (fromMonth.value.trim() === "" || amount < 0) {
+                        isValid = false;
+                        fromMonth.classList.add('error-input');
+                        amountInput.classList.add('error-input');
+                        return;
+                    } else {
+                        fromMonth.classList.remove('error-input');
+                        amountInput.classList.remove('error-input');
+                    }
+
+                    const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
+
+                    lifeCosts.push({
+                        month: totalMonths,
+                        amount: amount,
+                        fromMonth: fromMonth.value
+                    });
+                });
+
+                if (!isValid) {
+                    alert('全ての項目に正しい数値を入力してください。年数は0以上、月は0から11までの数値を入力してください。');
+                    return;
+                }
+
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.lifeCost = lifeCosts.sort((a, b) => a.month - b.month); // 総月数でソート
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('生活費の設定が保存されました！');
+            });
+
+            loadLifeCost();
+        });</script>

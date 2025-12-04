@@ -1,0 +1,99 @@
+<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>税金設定</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="stylesheet"href="style.css"><div class="container"><header><h1>税金設定</h1><p>金融所得に対する税率の変動を設定します。</header><main><div class="input-section"><h2>税率イベント一覧</h2><div class="instruction-box"><p><strong>💡 入力方法:</strong><ul><li><strong>適用開始時期（年月）:</strong> 設定した税率が適用され始めるタイミングです。<li>この税率は、**次の適用開始時期が設定されるまで**、継続して適用されます。</ul></div><div id="taxContainer"></div><br><div class="form-actions"><button id="addTaxBtn"type="button"class="nav-button">税率を追加</button> <button id="saveTaxBtn"class="save-button">設定を保存</button></div></div><div class="back-link"><a href="index.html"class="nav-button">メイン画面に戻る</a></div></main></div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+            const taxContainer = document.getElementById('taxContainer');
+            const addTaxBtn = document.getElementById('addTaxBtn');
+            const saveTaxBtn = document.getElementById('saveTaxBtn');
+
+            const createTaxItem = (index, taxData = {}) => {
+                const taxItem = document.createElement('div');
+                taxItem.classList.add('tax-item');
+                taxItem.innerHTML = `
+                    <h3>税率設定 ${index + 1}</h3>
+                    <div class="form-group input-group">
+            			<label for="month-input">税金が適用される年・月を選択:</label>
+            			<input type="month" class="tax-from-month-input" name="selected-from-month"  value="${taxData.fromMonth || ''}">
+                    </div>
+                    <div class="form-group input-group">
+                        <label>税率（%）:</label>
+                        <input type="number" step="0.001" class="tax-rate" value="${taxData.rate || ''}" required>
+                    </div>
+                    <button type="button" class="remove-btn">削除</button>
+                `;
+
+                taxItem.querySelector('.remove-btn').addEventListener('click', () => {
+                    taxItem.remove();
+                    updateTaxNumbers();
+                });
+
+                return taxItem;
+            };
+
+            const updateTaxNumbers = () => {
+                const items = document.querySelectorAll('.tax-item');
+                items.forEach((item, index) => {
+                    item.querySelector('h3').textContent = `税率設定 ${index + 1}`;
+                });
+            };
+
+            const loadTax = () => {
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                const tax = appData.tax || [];
+                taxContainer.innerHTML = '';
+                if (tax.length > 0) {
+                    tax.forEach((data, index) => {
+                        taxContainer.appendChild(createTaxItem(index, data));
+                    });
+                } else {
+                    taxContainer.appendChild(createTaxItem(0));
+                }
+                updateTaxNumbers();
+            };
+
+            addTaxBtn.addEventListener('click', () => {
+                const index = taxContainer.children.length;
+                const newTaxItem = createTaxItem(index);
+                taxContainer.appendChild(newTaxItem);
+                updateTaxNumbers();
+            });
+
+            saveTaxBtn.addEventListener('click', () => {
+                const taxData = [];
+                let isValid = true;
+
+                document.querySelectorAll('.tax-item').forEach(item => {
+                    const fromMonth = item.querySelector('.tax-from-month-input');
+                    const rateInput = item.querySelector('.tax-rate');
+
+                    const rate = parseFloat(rateInput.value);
+
+                    if (!fromMonth || fromMonth.value.trim() === "" || rate < 0) {
+                        isValid = false;
+                        fromMonth.classList.add('error-input');
+                        rateInput.classList.add('error-input');
+                        return;
+                    } else {
+                        fromMonth.classList.remove('error-input');
+                        rateInput.classList.remove('error-input');
+                    }
+
+                    const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
+
+                    taxData.push({
+                        month: totalMonths,
+                        rate: rate,
+                        fromMonth: fromMonth.value
+                    });
+                });
+
+                if (!isValid) {
+                    alert('全ての項目に正しい数値を入力してください。年数は0以上、月は0から11までの数値を入力してください。');
+                    return;
+                }
+
+                const appData = JSON.parse(localStorage.getItem('fireSimulatorData')) || {};
+                appData.tax = taxData.sort((a, b) => a.month - b.month);
+                localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
+                alert('税金設定が保存されました！');
+            });
+
+            loadTax();
+        });</script>
