@@ -102,6 +102,9 @@
                     if (!toMonth || toMonth.value.trim() !== "") {
                         endTotalMonths = compareMonthAndGetCurrent(toMonth.value);
                         toMonthDate = toMonth.value;
+                    }else{
+                        endTotalMonths = compareMonthAndGetCurrent("9999-12");
+                        toMonthDate = toMonth.value;
                     }
 
                     incomeData.push({

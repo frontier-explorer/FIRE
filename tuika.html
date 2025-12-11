@@ -122,12 +122,9 @@
                     const meigara = meigaraInput.value;
                     const amount = parseInt(amountInput.value.replace(/,/g, ''), 10); // カンマを削除して数値に変換
 
-                    if (!fromMonth || fromMonth.value.trim() === "" || amount < 0 || !meigara) {
+                    if (!fromMonth || fromMonth.value.trim() === "" || amount < 0 || !meigara || !checkedInput) {
                         isValid = false;
-                        fromMonth.classList.add('error-input');
-                        toMonth.classList.add('error-input');
-                        amountInput.classList.add('error-input');
-                        meigaraInput.classList.add('error-input');
+                        alert("設定を全部設定してください。");
                         return; // forEachから抜ける
                     }
                     //投資が１回限りではないときのチェック
@@ -136,18 +133,10 @@
                         const toMonth_totalMonths = compareMonthAndGetCurrent(toMonth.value);
                         if (totalMonths > toMonth_totalMonths) {
                             isValid = false;
-                            fromMonth.classList.add('error-input');
-                            toMonth.classList.add('error-input');
-                            amountInput.classList.add('error-input');
-                            meigaraInput.classList.add('error-input');
+                            alert("投資開始年月日が、投資終了年月日以降になっています。");
                             return; // forEachから抜ける
                         }
                     }
-                    // エラーのない状態であればスタイルを元に戻す
-                    fromMonth.classList.remove('error-input');
-                    toMonth.classList.remove('error-input');
-                    amountInput.classList.remove('error-input');
-                    meigaraInput.classList.remove('error-input');
 
                     //追加投資の開始年月と、終了年月をシミュレーション上のトータル月数に変換する
                     const totalMonths = compareMonthAndGetCurrent(fromMonth.value);
@@ -155,6 +144,11 @@
                     if (checkedInput.value === "１回") {
                         //１回というのであれば、開始年月と同じに強制的にする
                         toMonth_value = fromMonth.value;
+                    }
+                    else{
+                        if(toMonth_value === null){
+                            toMonth_value = "9999-12";
+                        }
                     }
 
                     tuikaData.push({

@@ -415,6 +415,8 @@
                 if (confirm('Local Storageに保存されている全ての設定データ（基本設定、保有証券など）を削除しますか？')) {
                     localStorage.removeItem('fireSimulatorData');
                     alert('設定データがクリアされました。');
+                    loadSettings();
+                    localStorage.setItem('fireSimulatorData', JSON.stringify(ClearAppData));
                     // ページをリロードして変更を反映
                     window.location.reload();
                 }
