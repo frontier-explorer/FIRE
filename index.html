@@ -1,4 +1,146 @@
-<!DOCTYPE html><html lang="ja"><meta charset="UTF-8"><meta name="viewport"content="width=device-width,initial-scale=1"><title>FIREシミュレーション</title><script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script><script>function gtag(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],gtag("js",new Date),gtag("config","G-KVH65NMPDK")</script><link rel="icon"type="image/png"href="./FrontireExplorer.png"sizes="32x32"><link rel="stylesheet"href="style.css"><style>.utility-actions{margin-top:30px;padding-top:20px;border-top:1px dashed #ccc;display:flex;gap:15px;justify-content:center}#loadSampleDataBtn{background-color:#27ae60;color:#fff;flex-grow:1;max-width:300px}#clearDataBtn{background-color:#e74c3c;color:#fff;flex-grow:1;max-width:300px}#exportDataLink{background-color:#27ae60;color:#fff;flex-grow:1;max-width:300px}#importDataBtn{background-color:#e74c3c;color:#fff;flex-grow:1;max-width:300px}.app-info{padding:15px;border:1px solid #ddd;border-radius:8px;margin-bottom:20px;background-color:#f9f9f9}</style><header><h1>FIREシミュレーション</h1><p>あなたの財務データに基づき、FIRE達成の可能性をモンテカルロ・シミュレーションで検証します。</header><div class="app-info"id="app-info-div"><h2>アプリの使い方</h2><ol><li>まずは「基本設定」からシミュレーション期間などを設定してください。<li>次に、「保有証券」や「相関係数」などの詳細なデータを入力してください。<li>全ての準備ができたら、「シミュレーション実行」から結果を確認できます。<li>※入力方法がわからないときは、画面一番下にある、緑色の「サンプルデータの入力」ボタンを押して、入力のイメージをつかんでください。おおむね入力する内容がわかったら赤色の「データをクリアする」ボタンを押して自分の金融資産を入力してください。</ol></div><main><div class="navigation-container"><h3>設定項目</h3><nav><ul><li><a href="config.html"class="nav-button">基本設定</a><li><a href="stocks.html"class="nav-button">保有証券</a><li><a href="soukan.html"class="nav-button">相関係数</a><li><a href="tuika.html"class="nav-button">追加投資</a><li><a href="life_cost.html"class="nav-button">生活費</a><li><a href="big_expense.html"class="nav-button">大きな出費</a><li><a href="income.html"class="nav-button">収入設定</a><li><a href="tax.html"class="nav-button">税金設定</a><li><a href="dividend_setting.html"class="nav-button">分配金・配当金設定（元本含むタイプは対象外）</a><li><a href="exchangeRate.html"class="nav-button">為替レート設定</a></ul></nav><br><nav><div class="utility-actions"><a href="#"id="exportDataLink"class="nav-button action-button">設定ファイルをエクスポート</a> <button id="importDataBtn"class="nav-button action-button">設定ファイルを読み込む</button></div></nav><br><a href="simulate.html"id="simulateLink"class="nav-button simulate-button"style="margin-top:20px">シミュレーション実行</a></div><div class="utility-actions"><button id="loadSampleDataBtn"class="nav-button"type="button">サンプルデータの入力</button> <button id="clearDataBtn"class="nav-button"type="button">データをクリアする</button></div></main><div><p><a href="FrontireExplorer.png"download>Webアイコンファイル (FrontireExplorer.png)</a><p><a href="FrontireExplorer.sig">Webアイコンへの署名</a><p><a href="public.pem">著者の公開鍵</a><p>本サイトのメインキャラクター等のイラストは、生成AI: Google Geminiの画像を基に、必要に応じて加筆・修正を行っています。<p>© 2025 FrontierExplorerChannel All Rights Reserved. (URL: https://www.youtube.com/@Frontier_Explorer)<br><br>本サイトの著作物（HTML, CSS, JS, デザイン等）の無断転載・複製・改変・再頒布を禁じます。<br>グラフ描画には、Chart.js（MITライセンス）を利用しています。</div><script src="app.js"></script><script>document.addEventListener('DOMContentLoaded', () => {
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIREシミュレーション</title>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-KVH65NMPDK');
+    </script>
+
+
+    <link rel="icon" type="image/png" href="./FrontireExplorer.png" sizes="32x32">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .utility-actions {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px dashed #ccc;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        /* サンプルデータ入力ボタンを強調 */
+        #loadSampleDataBtn {
+            background-color: #27ae60;
+            /* 緑系 */
+            color: white;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        #clearDataBtn {
+            background-color: #e74c3c;
+            /* 赤系 */
+            color: white;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        #exportDataLink {
+            background-color: #27ae60;
+            /* 緑系 */
+            color: white;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        #importDataBtn {
+            background-color: #e74c3c;
+            /* 赤系 */
+            color: white;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        .app-info {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>FIREシミュレーション</h1>
+        <p>あなたの財務データに基づき、FIRE達成の可能性をモンテカルロ・シミュレーションで検証します。</p>
+    </header>
+
+    <div class="app-info" id="app-info-div">
+        <h2>アプリの使い方</h2>
+        <ol>
+            <li>まずは「基本設定」からシミュレーション期間などを設定してください。</li>
+            <li>次に、「保有証券」や「相関係数」などの詳細なデータを入力してください。</li>
+            <li>全ての準備ができたら、「シミュレーション実行」から結果を確認できます。</li>
+            <li>※入力方法がわからないときは、画面一番下にある、緑色の「サンプルデータの入力」ボタンを押して、入力のイメージをつかんでください。おおむね入力する内容がわかったら赤色の「データをクリアする」ボタンを押して自分の金融資産を入力してください。
+            </li>
+        </ol>
+    </div>
+
+    <main>
+        <div class="navigation-container">
+            <h3>設定項目</h3>
+            <nav>
+                <ul>
+                    <li><a href="config.html" class="nav-button">基本設定</a></li>
+                    <li><a href="stocks.html" class="nav-button">保有証券</a></li>
+                    <li><a href="soukan.html" class="nav-button">相関係数</a></li>
+                    <li><a href="tuika.html" class="nav-button">追加投資</a></li>
+                    <li><a href="life_cost.html" class="nav-button">生活費</a></li>
+                    <li><a href="big_expense.html" class="nav-button">大きな出費</a></li>
+                    <li><a href="income.html" class="nav-button">収入設定</a></li>
+                    <li><a href="tax.html" class="nav-button">税金設定</a></li>
+                    <li><a href="dividend_setting.html" class="nav-button">分配金・配当金設定（元本含むタイプは対象外）</a></li>
+                    <li><a href="exchangeRate.html" class="nav-button">為替レート設定</a></li>
+                </ul>
+            </nav>
+            <br>
+            <nav>
+                <div class="utility-actions">
+                    <a href="#" id="exportDataLink" class="nav-button action-button">設定ファイルをエクスポート</a>
+                    <button id="importDataBtn" class="nav-button action-button">設定ファイルを読み込む</button>
+                </div>
+            </nav>
+            <br>
+            <a href="simulate.html" id="simulateLink" class="nav-button simulate-button"
+                style="margin-top: 20px;">シミュレーション実行</a>
+        </div>
+
+        <div class="utility-actions">
+            <button id="loadSampleDataBtn" class="nav-button" type="button">サンプルデータの入力</button>
+            <button id="clearDataBtn" class="nav-button" type="button">データをクリアする</button>
+        </div>
+
+    </main>
+    <div>
+        <p><a href="FrontireExplorer.png" download>Webアイコンファイル (FrontireExplorer.png)</a></p>
+        <p><a href="FrontireExplorer.sig">Webアイコンへの署名</href></a>
+        <p><a href="public.pem">著者の公開鍵</href>
+        </p>
+
+        <p>本サイトのメインキャラクター等のイラストは、生成AI: Google Geminiの画像を基に、必要に応じて加筆・修正を行っています。</p>
+
+        <p>
+            © 2025 FrontierExplorerChannel All Rights Reserved. (URL: https://www.youtube.com/@Frontier_Explorer)<br>
+            <br>本サイトの著作物（HTML, CSS, JS, デザイン等）の無断転載・複製・改変・再頒布を禁じます。
+            <br>グラフ描画には、Chart.js（MITライセンス）を利用しています。
+        </p>
+    </div>
+
+
+    <script src="app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
             //ロード時に文字としての年月を、実行時のシミュレーションの年月に変換する。
             InitializeDataConvert();
 
@@ -594,8 +736,8 @@
                         const w_month = compareMonthAndGetCurrent(element.fromMonth);
                         element.startTotalMonths = w_month;
                     }
-                    if (element.toMonthDate) {
-                        const w_month = compareMonthAndGetCurrent(element.toMonthDate);
+                    if (element.toMonth) {
+                        const w_month = compareMonthAndGetCurrent(element.toMonth);
                         element.endTotalMonths = w_month;
                     }
                 }
@@ -611,4 +753,9 @@
             }
 
             localStorage.setItem('fireSimulatorData', JSON.stringify(appData));
-        }</script>
+        }
+
+    </script>
+</body>
+
+</html>
