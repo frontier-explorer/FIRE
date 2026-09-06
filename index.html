@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIREシミュレーター（Web版）</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>🔥 FIREシミュレーター <span class="badge">Web版</span></h1>
+    <div class="header-actions">
+      <button id="btn-export-json" class="btn btn-ghost" title="設定をJSONファイルとして保存">設定を保存</button>
+      <label class="btn btn-ghost" title="JSONファイルから設定を読み込む">
+        設定を読込
+        <input type="file" id="input-import-json" accept="application/json" hidden>
+      </label>
+    </div>
+  </header>
+
+  <nav class="tab-bar" id="tab-bar">
+    <!-- タブボタンはJSで動的生成する -->
+  </nav>
+
+  <main id="tab-content" class="tab-content">
+    <!-- 各タブの内容はJSで動的生成する -->
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- ライブラリなしの素のJavaScriptで動作する（外部CDN依存を避けるため） -->
+  <script src="js/bond.js"></script>
+  <script src="js/retirementTax.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/csv.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/prepare.js"></script>
+  <script src="js/ui-helpers.js"></script>
+  <script src="js/ui-tables.js"></script>
+  <script src="js/ui-tabs.js"></script>
+  <script src="js/ui-simulation.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/main.js"></script>
+
+  <div id="SignatureArea">
+    <p><a href="FrontireExplorer.png" download>Webアイコンファイル (FrontireExplorer.png)</a></p>
+    <p><a href="FrontireExplorer.sig">Webアイコンへの署名</href></a>
+    <p><a href="public.pem">著者の公開鍵</href></p>
+
+    <p>本サイトのメインキャラクター等のイラストは、生成AI: Google Geminiの画像を基に、必要に応じて加筆・修正を行っています。</p>
+    <p>
+      © 2025 FrontierExplorerChannel All Rights Reserved. (URL: https://www.youtube.com/@Frontier_Explorer)<br>
+      <br>本サイトの著作物（HTML, CSS, JS, デザイン等）の無断転載・複製・改変・再頒布を禁じます。
+      <br>グラフ描画には、Chart.js（MITライセンス）を利用しています。
+    </p>
+  </div>
+
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-KVH65NMPDK"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-KVH65NMPDK');
+  </script>
+
+</body>
+</html>
