@@ -240,6 +240,45 @@
     });
   }
 
+  /**
+   * 保有銘柄一覧（Web版内部形式・meigaraキー）から、相関係数の参照先として
+   * 有効なベース銘柄名の一覧を作る（重複排除）。
+   */
+  function collectValidBaseNamesFromStocks(stocks) {
+    const names = [];
+    stocks.forEach((stock) => {
+      const baseName = extractBaseNameForSoukan(stock.meigara);
+      if (baseName && names.indexOf(baseName) === -1) names.push(baseName);
+    });
+    return names;
+  }
+
+  /**
+   * 相関係数データから「孤立行」を取り除く。
+   * 孤立行 = 銘柄のリネーム・削除等により、現在の保有銘柄一覧にはもう存在しない
+   * ベース銘柄名を参照している行（例: 過去に「SBI SP500」→「SlimSP500」へ統合した
+   * 際、当時は相関係数側が連動して書き換わっていなかったために残ってしまったデータ）。
+   * 相関係数タブの銘柄選択プルダウンは、一致する選択肢が無い値が来ると先頭の選択肢を
+   * 黙って表示してしまうため、孤立行は「本来別々の設定であるはずが、同じ銘柄同士の
+   * 重複行のように見える」という紛らわしい表示を引き起こす。
+   * エンジン側（engine.js の buildCholeskyMatrix）は現在の保有銘柄に存在しない
+   * ベース名の設定を計算に使わない仕様のため、削除してもシミュレーション結果には
+   * 影響しない。
+   */
+  function removeOrphanedSoukanRows(soukanRows, validBaseNames) {
+    const kept = [];
+    soukanRows.forEach((row) => {
+      const isValid = validBaseNames.indexOf(row.aMeigara) !== -1 && validBaseNames.indexOf(row.bMeigara) !== -1;
+      if (isValid) {
+        kept.push(row);
+      } else {
+        // デバッグ用: どの孤立行が削除されたか分かるようにログを残す
+        console.log('[相関係数] 孤立データを削除しました:', row.aMeigara, '×', row.bMeigara, '(係数:', row.keisu, ')');
+      }
+    });
+    return kept;
+  }
+
   /** 1件の配当設定データを Android形式 → Web版内部形式 に変換する */
   function normalizeDividendRow(row) {
     if (row.meigaraKey !== undefined) return row;
@@ -322,7 +361,9 @@
       normalized.stocks = normalized.stocks.map(normalizeStockRow);
     }
     if (Array.isArray(normalized.soukan)) {
-      normalized.soukan = deduplicateSoukanByBaseNamePair(normalized.soukan.map(normalizeSoukanRow));
+      const deduplicated = deduplicateSoukanByBaseNamePair(normalized.soukan.map(normalizeSoukanRow));
+      const validBaseNames = collectValidBaseNamesFromStocks(Array.isArray(normalized.stocks) ? normalized.stocks : []);
+      normalized.soukan = removeOrphanedSoukanRows(deduplicated, validBaseNames);
     }
 
     // 配当設定: Android版はトップレベルのキー名が "dividend_setting"（アンダースコア）

@@ -182,13 +182,39 @@
   }
 
   /**
+   * 相関係数一覧（soukan）の中で、指定した古いベース銘柄名を参照している行を
+   * 新しいベース銘柄名に書き換える。
+   *
+   * 【背景・このバグの本体】
+   * 保有銘柄タブでベース銘柄名をリネームした場合、以前はこの処理が無く、
+   * 相関係数タブ側には古いベース名（例:「SBI SP500」「RakutenSP500」等、
+   * 統合・リネーム前の名前）がそのまま孤立して残り続けていた。
+   * 相関係数タブの銘柄選択プルダウンは、現在の保有銘柄に存在しない値が来ると
+   * どの選択肢にもselected属性が立たず、ブラウザが黙って先頭の選択肢を
+   * 表示してしまうため、実際には別々の（存在しない銘柄への）参照であるにも
+   * 関わらず、画面上は「同じ銘柄同士の重複行」のように見えてしまっていた。
+   * リネームのたびに相関係数側も連動して書き換えることで、この孤立データの
+   * 発生そのものを防ぐ。
+   */
+  function renameSoukanBaseName(soukan, oldBaseName, newBaseName) {
+    if (!soukan || !oldBaseName || oldBaseName === newBaseName) return;
+    soukan.forEach((row) => {
+      if (row.aMeigara === oldBaseName) row.aMeigara = newBaseName;
+      if (row.bMeigara === oldBaseName) row.bMeigara = newBaseName;
+    });
+    // デバッグ用: リネームが相関係数側にも反映されたことを確認できるようにログを残す
+    console.log('[相関係数] ベース名のリネームに連動して書き換えました:', oldBaseName, '→', newBaseName);
+  }
+
+  /**
    * ベース銘柄名を編集したときの処理。編集前のこの行が、他の行から「ソース」として
    * 参照されていた場合（＝同じベース名を持つ行の中で最初に登場する行だった場合）は、
    * それらの行のベース名も、新しい名前へ一緒に書き換える（従属関係を維持するため）。
    * 一方、ソースでない行（他の行に追従していた行）の名前だけを変えた場合は、
    * その行だけが独立し、他の行には影響しない。
+   * あわせて、相関係数一覧（soukan）側の同名参照も連動してリネームする。
    */
-  function renameStockBaseNameWithCascade(stocks, editedIndex, newBaseName) {
+  function renameStockBaseNameWithCascade(stocks, editedIndex, newBaseName, soukan) {
     const oldBaseName = extractStockBaseName(stocks[editedIndex].meigara);
     const wasSource = oldBaseName !== '' &&
       stocks.findIndex((s) => extractStockBaseName(s.meigara) === oldBaseName) === editedIndex;
@@ -202,6 +228,12 @@
     }
     stocks[editedIndex].meigara = composeStockMeigara(newBaseName, extractStockAccountType(stocks[editedIndex].meigara));
     reconcileSyncedStockFields(stocks);
+    // 相関係数側の連動は、グループ全体の名前が変わる「ソース行のリネーム」のときだけ行う。
+    // ソースでない行（従属行）だけを変えた場合は、その行が独立するだけで、
+    // グループの残りが引き続き旧ベース名を使い続けるため、相関係数側は変更しない。
+    if (wasSource) {
+      renameSoukanBaseName(soukan, oldBaseName, newBaseName.trim());
+    }
   }
 
   /**
@@ -247,7 +279,7 @@
   }
 
   /** 保有銘柄タブの1行分のDOM（<tr>）を組み立てる */
-  function buildStockRow(stocks, index, onChange) {
+  function buildStockRow(stocks, index, onChange, soukan) {
     const stock = stocks[index];
     const baseName = extractStockBaseName(stock.meigara);
     const accountType = extractStockAccountType(stock.meigara);
@@ -271,7 +303,7 @@
     const baseNameInput = createElement('input', { type: 'text', list: datalistId, placeholder: '銘柄名（ベース名）' });
     baseNameInput.value = baseName;
     baseNameInput.addEventListener('change', (e) => {
-      renameStockBaseNameWithCascade(stocks, index, e.target.value.trim());
+      renameStockBaseNameWithCascade(stocks, index, e.target.value.trim(), soukan);
       onChange();
     });
 
@@ -353,7 +385,7 @@
     ]));
 
     const tbody = createElement('tbody');
-    stocks.forEach((stock, index) => { tbody.appendChild(buildStockRow(stocks, index, onChange)); });
+    stocks.forEach((stock, index) => { tbody.appendChild(buildStockRow(stocks, index, onChange, appData.soukan)); });
     table.appendChild(tbody);
     container.appendChild(createElement('div', { class: 'table-scroll' }, [table]));
 
