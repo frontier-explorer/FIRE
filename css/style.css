@@ -200,7 +200,3 @@ body {
   .app-header h1 { font-size: 15px; }
   .tab-content { padding: 10px; }
 }
-
-#SignatureArea a{
-  color: white;
-}

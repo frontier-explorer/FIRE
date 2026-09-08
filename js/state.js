@@ -68,35 +68,35 @@
         {
           meigara: 'SlimSP500＜特定＞', kuchisu: 7317073, tani: 10000,
           currentValuePerUnit: 41000, averagePrice: 30000, annualReturn: 10.0, volatility: 18.0,
-          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: ''
+          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: true
         },
         // 【旧NISA】SlimSP500 — 新規購入は終了済み。課税開始2028-12（5年間の非課税期間終了後）
         // 1,219,512口 × 41,000円 ÷ 10,000 ≒ 500万円
         {
           meigara: 'SlimSP500＜旧NISA＞', kuchisu: 1219512, tani: 10000,
           currentValuePerUnit: 41000, averagePrice: 33000, annualReturn: 10.0, volatility: 18.0,
-          taxStartYearMonth: '2028-12', taxStartYear: null, taxStartMonth: null, exchangeRate: '', yahooFinanceCode: ''
+          taxStartYearMonth: '2028-12', taxStartYear: null, taxStartMonth: null, exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: true
         },
         // 【iDeCo】SlimSP500 — 60歳（2060-01）まで凍結、以降は一時金として受給（idecoConfig参照）
         // 292,683口 × 41,000円 ÷ 10,000 ≒ 120万円
         {
           meigara: 'SlimSP500＜iDeCo＞', kuchisu: 292683, tani: 10000,
           currentValuePerUnit: 41000, averagePrice: 34000, annualReturn: 10.0, volatility: 18.0,
-          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: ''
+          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: true
         },
         // 【新NISA 成長投資枠】slimオルカン — 恒久非課税
         // 5,625,000口 × 32,000円 ÷ 10,000 ＝ 1,800万円
         {
           meigara: 'slimオルカン＜成長(新NISA)＞', kuchisu: 5625000, tani: 10000,
           currentValuePerUnit: 32000, averagePrice: 24000, annualReturn: 8.0, volatility: 15.0,
-          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: ''
+          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: true
         },
         // 【新NISA つみたて投資枠】slimオルカン — 恒久非課税
         // 2,812,500口 × 32,000円 ÷ 10,000 ＝ 900万円
         {
           meigara: 'slimオルカン＜積立(新NISA)＞', kuchisu: 2812500, tani: 10000,
           currentValuePerUnit: 32000, averagePrice: 25000, annualReturn: 8.0, volatility: 15.0,
-          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: ''
+          taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0, exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: true
         }
       ],
       // SP500系（特定・旧NISA・iDeCo）とオルカン系（新NISA成長・積立）は
@@ -172,7 +172,9 @@
       taxStartYear: row.TaxStartYear !== undefined ? row.TaxStartYear : null,
       taxStartMonth: row.TaxStartMonth !== undefined ? row.TaxStartMonth : null,
       exchangeRate: row.ExchangeRate || '',
-      yahooFinanceCode: row.YahooFinanceCode || ''
+      yahooFinanceCode: row.YahooFinanceCode || '',
+      // Android側キー名: AnomalyFilterEligible（未設定の古いデータはfalse扱い）
+      anomalyFilterEligible: row.AnomalyFilterEligible === true
     };
   }
 
@@ -261,7 +263,8 @@
       Return: stock.annualReturn, Volatility: stock.volatility,
       TaxStartYearMonth: stock.taxStartYearMonth || null,
       TaxStartYear: stock.taxStartYear || 0, TaxStartMonth: stock.taxStartMonth || 0,
-      ExchangeRate: stock.exchangeRate || '', YahooFinanceCode: stock.yahooFinanceCode || ''
+      ExchangeRate: stock.exchangeRate || '', YahooFinanceCode: stock.yahooFinanceCode || '',
+      AnomalyFilterEligible: stock.anomalyFilterEligible === true
     };
   }
 

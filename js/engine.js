@@ -1068,6 +1068,22 @@
     let fireFailure = false;
     let failureMonth = -1;
 
+    // ---- 「長期経過後の平均年率マイナス」異常値判定用の年次価格スナップショット ----
+    // appData.stocks側で anomalyFilterEligible が true の銘柄（オルカン・S&P500等、
+    // 「長期保有すれば平均年率がマイナスになった実例が歴史的にほとんどない」という
+    // 前提が成り立つ銘柄）についてのみ、1年ごとの基準価額（currentValuePerUnit）を
+    // 記録しておく。結果表示後にユーザーがコンボボックスで年数を選んだ時点で、
+    // 「開始時点→その年数」の平均年率（CAGR）が計算できるようにするための下準備。
+    const anomalyEligibleIndices = [];
+    stocks.forEach((s, i) => { if (s.anomalyFilterEligible) anomalyEligibleIndices.push(i); });
+    const trackAnomalySeries = anomalyEligibleIndices.length > 0;
+    const anomalyYearlySeries = trackAnomalySeries ? {} : null;
+    if (trackAnomalySeries) {
+      anomalyEligibleIndices.forEach((i) => {
+        anomalyYearlySeries[currentStocks[i].meigara] = [currentStocks[i].currentValuePerUnit];
+      });
+    }
+
     const history = saveDetailHistory ? [] : null;
     const lightHistory = [];
 
@@ -1316,6 +1332,13 @@
         }
       }
 
+      // 1年（12ヶ月）ごとに、異常値判定対象銘柄の基準価額をスナップショットする
+      if (trackAnomalySeries && (monthIndex + 1) % 12 === 0) {
+        anomalyEligibleIndices.forEach((i) => {
+          anomalyYearlySeries[currentStocks[i].meigara].push(currentStocks[i].currentValuePerUnit);
+        });
+      }
+
       const endAssets = shockRateFn
         ? currentStocks.reduce((s, st) => s + (st.kuchisu > 0 ? st.kuchisu * (st.currentValuePerUnit / st.tani) : 0.0), 0.0)
         : returnRes.endOfPeriodAssets;
@@ -1376,7 +1399,7 @@
 
     return {
       trialId, success: !fireFailure, failureMonth: fireFailure ? failureMonth : totalPeriods,
-      history: history || [], lightHistory
+      history: history || [], lightHistory, anomalyYearlySeries
     };
   }
 
@@ -1689,12 +1712,61 @@
     return rows;
   }
 
+  /**
+   * 指定した年数(thresholdYears)経過時点での、対象銘柄（anomalyFilterEligible=trueの
+   * 銘柄）いずれかの平均年率（CAGR: Compound Annual Growth Rate、幾何平均成長率）が
+   * マイナスかどうかを判定する。
+   *
+   * 対象銘柄がそもそも1つも設定されていない場合や、この試行がthresholdYears年に
+   * 到達する前に終了している場合（総運用期間がthresholdYears年未満）は、判定不能
+   * として false（異常値ではない＝除外しない）を返す。
+   */
+  function hasNegativeAverageReturnAtYear(result, thresholdYears) {
+    const series = result.anomalyYearlySeries;
+    if (!series) return false;
+    return Object.keys(series).some((name) => {
+      const yearly = series[name];
+      // yearly[0]が開始時点、yearly[k]がk年経過時点の基準価額
+      if (!yearly || yearly.length - 1 < thresholdYears) return false;
+      const startValue = yearly[0];
+      const valueAtThreshold = yearly[thresholdYears];
+      if (!(startValue > 0)) return false;
+      // 平均年率（CAGR） = (終了時点の基準価額 / 開始時点の基準価額)^(1/年数) - 1
+      const cagr = Math.pow(valueAtThreshold / startValue, 1.0 / thresholdYears) - 1.0;
+      return cagr < 0;
+    });
+  }
+
+  /**
+   * 「指定年数以上運用した場合の平均年率（CAGR）がマイナスになっているケース」を、
+   * 歴史的には考えにくい異常値とみなして母数（分母）から完全に除外した試行結果配列を返す。
+   *
+   * 背景：オルカンやS&P500等のインデックス投資は、実際の歴史上は15年以上運用を
+   * 継続した場合の平均年率（CAGR）がマイナスになった例がほとんどなく、運用期間が
+   * 長くなるほどその傾向は強まる。一方でモンテカルロシミュレーションでは、確率的な
+   * 乱数の組み合わせにより、そうした歴史的には考えにくいほどの長期平均年率マイナス
+   * （外れ値）が一定確率で発生してしまう。これをそのまま失敗率等に含めてしまうと、
+   * 実際以上にFIREを恐れさせてしまう可能性がある。
+   * ※この判定は、保有銘柄タブで「異常値除外の対象」にチェックを入れた銘柄
+   *  （anomalyFilterEligible=true）についてのみ行う。個別株・特定のアクティブ
+   *  ファンド等、必ずしも「長期なら平均年率がマイナスにならない」という前提が
+   *  成り立たない銘柄まで一律に対象化してしまうのを防ぐため。
+   *
+   * @param results runSimulation等の戻り値（全試行分）
+   * @param thresholdYears 判定の基準年数。null・undefined・0以下の場合はフィルタなし（元の配列をそのまま返す）
+   * @return 対象銘柄の平均年率がthresholdYears時点でマイナスだったケースを除いた試行結果配列
+   */
+  function filterOutLongTermNegativeReturnAnomalies(results, thresholdYears) {
+    if (!thresholdYears || thresholdYears <= 0) return results;
+    return results.filter((r) => !hasNegativeAverageReturnAtYear(r, thresholdYears));
+  }
+
   // =====================================================
   // 公開API
   // =====================================================
   global.FireEngine = {
     runSimulation, runSimulationChunked, runSimulationWithShock, calculateSummary, calculatePercentileTimeline,
-    calculateLifeCostTable,
+    calculateLifeCostTable, filterOutLongTermNegativeReturnAnomalies,
     percentile, calculateTaxRate, yearMonthToTotalMonths,
     // テスト・デバッグ用に内部関数の一部も公開する
     // getBaseName: 相関係数タブ（ui-tabs.js）が、保有銘柄一覧からベース銘柄名

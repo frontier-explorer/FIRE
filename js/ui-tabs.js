@@ -137,7 +137,9 @@
 
   // 同期・ロックの対象となる項目（同一ベース銘柄なら必ず同じ値になるべき項目）。
   // 口数・平均取得価額・旧NISA課税開始年月は、口座ごとに異なりうるため対象外とする。
-  const STOCK_SYNCED_FIELDS = ['tani', 'currentValuePerUnit', 'annualReturn', 'volatility', 'exchangeRate'];
+  // anomalyFilterEligible（異常値除外フィルタの対象銘柄かどうか）も、同じ銘柄なら
+  // 口座が違っても必ず同じ設定になるべき項目なので同期対象に含める。
+  const STOCK_SYNCED_FIELDS = ['tani', 'currentValuePerUnit', 'annualReturn', 'volatility', 'exchangeRate', 'anomalyFilterEligible'];
 
   /** 銘柄名文字列からベース名（＜口座種別＞より前の部分）を取り出す */
   function extractStockBaseName(meigara) {
@@ -227,6 +229,13 @@
       select.disabled = locked;
       select.addEventListener('change', (e) => onFieldChange(key, e.target.value));
       return select;
+    }
+    if (key === 'anomalyFilterEligible') {
+      const checkbox = createElement('input', { type: 'checkbox' });
+      checkbox.checked = stock.anomalyFilterEligible === true;
+      checkbox.disabled = locked;
+      checkbox.addEventListener('change', (e) => onFieldChange(key, e.target.checked));
+      return checkbox;
     }
     const input = createElement('input', { type: 'number' });
     if (step) input.step = step;
@@ -326,6 +335,7 @@
       createElement('td', {}, [buildStockSyncedField(stock, 'volatility', 'number', '0.1', locked, onFieldChange)]),
       createElement('td', {}, [taxMonthInput]),
       createElement('td', {}, [buildStockSyncedField(stock, 'exchangeRate', null, null, locked, onFieldChange)]),
+      createElement('td', { class: 'col-checkbox' }, [buildStockSyncedField(stock, 'anomalyFilterEligible', 'checkbox', null, locked, onFieldChange)]),
       createElement('td', { class: 'col-action' }, [deleteBtn])
     ]);
   }
@@ -337,7 +347,7 @@
 
     const table = createElement('table', { class: 'data-table' });
     const headers = ['銘柄名（ベース名）', '口座種別', '口数', '単位', '現在の基準価額', '平均取得価額',
-      '期待年率リターン%', 'ボラティリティ%', '旧NISA課税開始年月', '為替ペア', ''];
+      '期待年率リターン%', 'ボラティリティ%', '旧NISA課税開始年月', '為替ペア', '異常値除外の対象', ''];
     table.appendChild(createElement('thead', {}, [
       createElement('tr', {}, headers.map((h) => createElement('th', { text: h })))
     ]));
@@ -357,7 +367,7 @@
         stocks.push({
           meigara: '＜特定＞', kuchisu: 0, tani: 10000, currentValuePerUnit: 10000, averagePrice: 10000,
           annualReturn: 5.0, volatility: 15.0, taxStartYearMonth: null, taxStartYear: 0, taxStartMonth: 0,
-          exchangeRate: '', yahooFinanceCode: ''
+          exchangeRate: '', yahooFinanceCode: '', anomalyFilterEligible: false
         });
         reconcileSyncedStockFields(stocks);
         onChange();
@@ -373,10 +383,14 @@
       createElement('p', {
         class: 'desc',
         text: '銘柄名（ベース名）は、この行より前に登録した銘柄をドロップダウンから選ぶか、新しい名前を入力してください。' +
-          '同じベース名を選ぶと、単位・現在の基準価額・期待年率リターン・ボラティリティ・為替ペアは、' +
-          '最初に登録した行（先頭行）の値に自動的にそろい、編集できなくなります（🔒同期）。' +
+          '同じベース名を選ぶと、単位・現在の基準価額・期待年率リターン・ボラティリティ・為替ペア・' +
+          '「異常値除外の対象」チェックは、最初に登録した行（先頭行）の値に自動的にそろい、編集できなくなります（🔒同期）。' +
           '先頭行の名前を変更すると、それに従っていた行の名前も一緒に変わります。' +
-          '口数・平均取得価額・旧NISA課税開始年月は、口座ごとに異なる場合が多いため、常に個別に編集できます。'
+          '口数・平均取得価額・旧NISA課税開始年月は、口座ごとに異なる場合が多いため、常に個別に編集できます。' +
+          '「異常値除外の対象」は、実行結果画面の「N年以降の平均年率マイナスを異常値として除外」フィルタで、' +
+          'この銘柄の値動きを判定材料に使うかどうかのチェックです。オルカン・S&P500等、' +
+          '長期保有時に平均年率がマイナスになった実例が歴史的にほとんどない銘柄にのみチェックを入れてください' +
+          '（個別株や特定のアクティブファンド等、その前提が成り立たない銘柄では入れないでください）。'
       })
     ]);
 

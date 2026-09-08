@@ -36,6 +36,14 @@
   let trialListSortDir = 'asc'; // 'asc'（少ない順） | 'desc'（多い順）
   let selectedTrialId = null;
 
+  // 「N年以上運用した場合の平均年率（CAGR）マイナスを異常値として除外」フィルタの
+  // 選択中の年数（null＝フィルタなし）。サマリー・試行一覧/詳細の再集計にのみ使う。
+  // ファンチャート・生活費テーブル・CSV出力には適用しない。
+  let anomalyExcludeYears = null;
+  // コンボボックスの選択肢（年数）。15年から5年刻みで100年まで
+  const ANOMALY_EXCLUDE_YEAR_OPTIONS = [];
+  for (let y = 15; y <= 100; y += 5) ANOMALY_EXCLUDE_YEAR_OPTIONS.push(y);
+
   // 試行一覧パネル（左：一覧／右：詳細）のDOM参照。生活費テーブルなど、
   // 他パネルから「この試行番号の詳細を見せる」という操作を行うために保持しておく
   let trialListPanelRefs = null;
@@ -47,10 +55,20 @@
    */
   function selectTrialById(trialId) {
     if (!trialListPanelRefs) return;
+    const { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn } = trialListPanelRefs;
+
+    // trialListPanelRefs.results は「長期平均年率マイナスの異常値除外」フィルタ適用後の配列。
+    // 生活費テーブル等、フィルタ非適用のパネルから除外済みの試行番号を指定された場合は、
+    // 詳細を表示せずに理由を通知する（除外ケースを一覧・詳細のどちらからも見せないため）
+    const targetExists = results.some((r) => r.trialId === trialId);
+    if (!targetExists) {
+      showToast('このケースは現在のフィルタ条件（長期平均年率マイナスの異常値除外）により除外されています');
+      return;
+    }
+
     selectedTrialId = trialId;
     // 絞り込み条件によって対象の試行が一覧から消えてしまわないよう、「すべて」に戻す
     trialListFilter = 'all';
-    const { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn } = trialListPanelRefs;
     renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn);
     renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn);
     if (typeof detailContainer.scrollIntoView === 'function') {
@@ -138,6 +156,7 @@
           trialListSortDir = 'asc';
           selectedTrialId = null;
           trialListPanelRefs = null;
+          anomalyExcludeYears = null;
 
           renderResults(resultsContainer, preparedAppData, results);
           showToast('シミュレーションが完了しました');
@@ -146,17 +165,83 @@
     }, 30);
   }
 
-  /** 実行結果全体（サマリー・チャート・試行詳細）を描画する */
+  /**
+   * 実行結果全体（異常値除外フィルタ・サマリー・チャート・試行詳細）を描画する。
+   * 「N年以上運用した場合の平均年率マイナスを異常値として除外」フィルタは、
+   * サマリーと試行一覧/詳細のみに適用し、ファンチャート・生活費テーブル・
+   * CSV出力には全試行（results）をそのまま使う。
+   */
   function renderResults(container, appData, results) {
     container.innerHTML = '';
-    const summary = FireEngine.calculateSummary(results, appData.config.failureDetailLimit);
+    const filteredResults = FireEngine.filterOutLongTermNegativeReturnAnomalies(results, anomalyExcludeYears);
+    const summary = FireEngine.calculateSummary(filteredResults, appData.config.failureDetailLimit);
 
+    container.appendChild(renderAnomalyExcludeFilterPanel(container, appData, results));
     container.appendChild(renderSummaryCards(summary));
     container.appendChild(renderAssessmentBox(summary));
     container.appendChild(renderLifeCostTablePanel(results));
     container.appendChild(renderFanChartPanel(results));
     container.appendChild(renderCsvExportPanel(results, appData.stocks));
-    container.appendChild(renderTrialListPanel(results, appData.stocks));
+    container.appendChild(renderTrialListPanel(filteredResults, appData.stocks));
+  }
+
+  /**
+   * 「N年以上運用した場合の平均年率（CAGR）マイナスを異常値として除外」フィルタの
+   * コンボボックスを描画する。選択を変更すると、実行結果全体（renderResults）を
+   * 選び直した条件で再描画する。
+   */
+  function renderAnomalyExcludeFilterPanel(container, appData, results) {
+    const hasEligibleStock = appData.stocks.some((s) => s.anomalyFilterEligible === true);
+
+    const makeOption = (value, label) => {
+      const attrs = { value, text: label };
+      const isSelected = (anomalyExcludeYears === null && value === '') ||
+        (anomalyExcludeYears !== null && value === String(anomalyExcludeYears));
+      if (isSelected) attrs.selected = 'selected';
+      return createElement('option', attrs);
+    };
+
+    const options = [makeOption('', 'フィルタなし（すべて集計に含める）')]
+      .concat(ANOMALY_EXCLUDE_YEAR_OPTIONS.map((y) => makeOption(String(y), y + '年時点の平均年率マイナスを除外')));
+
+    const select = createElement('select', {
+      class: 'form-select',
+      onchange: (e) => {
+        const v = e.target.value;
+        anomalyExcludeYears = v === '' ? null : parseInt(v, 10);
+        renderResults(container, appData, results);
+      }
+    }, options);
+    // createElement は setAttribute で属性を設定するため、disabled:false を渡すと
+    // 属性が存在するだけでdisabled扱いになってしまう（HTML仕様）。ここではプロパティで直接設定する。
+    select.disabled = !hasEligibleStock;
+
+    const excludedCount = results.length - FireEngine.filterOutLongTermNegativeReturnAnomalies(results, anomalyExcludeYears).length;
+
+    const descLines = [
+      'オルカンやS&P500等のインデックス投資は、実際の歴史上は15年以上運用を続けた場合の' +
+        '平均年率（CAGR）がマイナスになった実例がほとんどなく、運用期間が長くなるほどその傾向は' +
+        '強まります。モンテカルロシミュレーションでは、こうした歴史的には考えにくい長期平均年率' +
+        'マイナス（外れ値）も一定確率で発生します。ここで年数を選ぶと、「保有銘柄」タブで' +
+        '「異常値除外の対象」にチェックを入れた銘柄について、開始時点からその年数経過時点までの' +
+        '平均年率がマイナスだったケースを母数から除外して、サマリーと試行一覧・詳細に反映します' +
+        '（ファンチャート・生活費テーブル・CSV出力には影響しません）。'
+    ];
+    if (!hasEligibleStock) {
+      descLines.push('※「保有銘柄」タブで「異常値除外の対象」にチェックを入れた銘柄が1件もないため、現在は選択できません。');
+    }
+
+    return createElement('div', { class: 'panel' }, [
+      createElement('h2', { text: '異常値（歴史的に考えにくい長期平均年率マイナス）の除外' }),
+      createElement('p', { class: 'desc', text: descLines.join(' ') }),
+      createElement('div', { class: 'trial-select' }, [select]),
+      createElement('p', {
+        class: 'help-text',
+        text: anomalyExcludeYears
+          ? ('除外件数：' + excludedCount + '件／全' + results.length + '件中')
+          : ''
+      })
+    ]);
   }
 
   /** サマリー統計カードを描画する */
