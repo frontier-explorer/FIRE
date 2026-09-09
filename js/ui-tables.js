@@ -119,7 +119,14 @@
         renderEditableTable(container, config);
       }
     });
-    container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+    if (config.disableAddReason) {
+      // 追加先となる対象（銘柄など）が無い場合は、追加ボタンを無効化し理由を案内する
+      addBtn.disabled = true;
+      container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+      container.appendChild(createElement('p', { class: 'help-text', text: config.disableAddReason }));
+    } else {
+      container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+    }
   }
 
   global.FireUiTables = { renderEditableTable };

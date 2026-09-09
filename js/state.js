@@ -279,6 +279,79 @@
     return kept;
   }
 
+  /**
+   * 保有銘柄一覧（Web版内部形式・meigaraキー）から、有効な銘柄フルネーム
+   * （口座種別込み）の一覧を作る（重複排除）。追加投資・配当設定の
+   * 参照先チェックに使う。
+   */
+  function collectValidFullMeigaraNames(stocks) {
+    const names = [];
+    stocks.forEach((stock) => {
+      if (stock.meigara && names.indexOf(stock.meigara) === -1) names.push(stock.meigara);
+    });
+    return names;
+  }
+
+  /**
+   * 追加投資一覧から「孤立行」を取り除く。
+   * 孤立行 = 投資先として指定している銘柄フルネームが、銘柄の削除等により
+   * 現在の保有銘柄一覧にはもう存在しない行。
+   * エンジン側（engine.js の handleAdditionalInvestment）は存在しない投資先の
+   * 設定を計算に使わない（何も投資されない）仕様のため、削除してもシミュレーション
+   * 結果には影響しない。
+   */
+  function removeOrphanedTuikaRows(tuikaRows, validFullNames) {
+    const kept = [];
+    tuikaRows.forEach((row) => {
+      if (validFullNames.indexOf(row.meigara) !== -1) {
+        kept.push(row);
+      } else {
+        console.log('[追加投資] 孤立データを削除しました:', row.meigara, '(金額:', row.amount, ')');
+      }
+    });
+    return kept;
+  }
+
+  /**
+   * 配当設定一覧から「孤立行」を取り除く。
+   * 孤立行 = 対象銘柄として指定している銘柄フルネームが、銘柄の削除等により
+   * 現在の保有銘柄一覧にはもう存在しない行。
+   * エンジン側（engine.js の配当処理）は存在しない対象銘柄の設定を計算に
+   * 使わない（配当が発生しない）仕様のため、削除してもシミュレーション結果には
+   * 影響しない。
+   */
+  function removeOrphanedDividendRows(dividendRows, validFullNames) {
+    const kept = [];
+    dividendRows.forEach((row) => {
+      if (validFullNames.indexOf(row.meigaraKey) !== -1) {
+        kept.push(row);
+      } else {
+        console.log('[配当設定] 孤立データを削除しました:', row.meigaraKey);
+      }
+    });
+    return kept;
+  }
+
+  /**
+   * 保有銘柄一覧を変更した直後（削除・リネーム・口座種別変更など）に呼び出し、
+   * 相関係数・追加投資・配当設定のうち、もう存在しない銘柄を参照している
+   * 孤立データをその場で取り除いて、画面間の整合性を保つ。
+   * appData を直接書き換える（呼び出し元は再描画のために画面更新処理を呼ぶこと）。
+   */
+  function reconcileCrossReferencesAfterStockChange(appData) {
+    const validBaseNames = collectValidBaseNamesFromStocks(appData.stocks || []);
+    const validFullNames = collectValidFullMeigaraNames(appData.stocks || []);
+    if (Array.isArray(appData.soukan)) {
+      appData.soukan = removeOrphanedSoukanRows(appData.soukan, validBaseNames);
+    }
+    if (Array.isArray(appData.tuika)) {
+      appData.tuika = removeOrphanedTuikaRows(appData.tuika, validFullNames);
+    }
+    if (Array.isArray(appData.dividendSetting)) {
+      appData.dividendSetting = removeOrphanedDividendRows(appData.dividendSetting, validFullNames);
+    }
+  }
+
   /** 1件の配当設定データを Android形式 → Web版内部形式 に変換する */
   function normalizeDividendRow(row) {
     if (row.meigaraKey !== undefined) return row;
@@ -366,6 +439,12 @@
       normalized.soukan = removeOrphanedSoukanRows(deduplicated, validBaseNames);
     }
 
+    // 追加投資: 現在の保有銘柄に存在しない投資先を参照している孤立行を除去する
+    if (Array.isArray(normalized.tuika)) {
+      const validFullNames = collectValidFullMeigaraNames(Array.isArray(normalized.stocks) ? normalized.stocks : []);
+      normalized.tuika = removeOrphanedTuikaRows(normalized.tuika, validFullNames);
+    }
+
     // 配当設定: Android版はトップレベルのキー名が "dividend_setting"（アンダースコア）
     if (Array.isArray(normalized.dividend_setting) &&
       (!Array.isArray(normalized.dividendSetting) || normalized.dividendSetting.length === 0)) {
@@ -375,6 +454,12 @@
       normalized.dividendSetting = normalized.dividendSetting.map(normalizeDividendRow);
     }
     delete normalized.dividend_setting;
+
+    // 配当設定: 現在の保有銘柄に存在しない対象銘柄を参照している孤立行を除去する
+    if (Array.isArray(normalized.dividendSetting)) {
+      const validFullNamesForDividend = collectValidFullMeigaraNames(Array.isArray(normalized.stocks) ? normalized.stocks : []);
+      normalized.dividendSetting = removeOrphanedDividendRows(normalized.dividendSetting, validFullNamesForDividend);
+    }
 
     // 確率的インフレ変動モデル: 旧仕様（為替との固定相関係数）からの移行。
     // 旧フィールド名"correlationStrength"のデータが残っている場合、値（weak/normal/strong）は
@@ -463,6 +548,7 @@
   global.FireState = {
     createDefaultAppData, createDefaultInflationCategories,
     saveAppData, loadAppData, exportAppDataAsFile, importAppDataFromFile,
-    normalizeImportedAppData, convertAppDataToAndroidFormat
+    normalizeImportedAppData, convertAppDataToAndroidFormat,
+    reconcileCrossReferencesAfterStockChange
   };
 })(typeof window !== 'undefined' ? window : globalThis);

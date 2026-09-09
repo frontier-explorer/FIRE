@@ -182,6 +182,22 @@
   }
 
   /**
+   * 追加投資・配当設定一覧の中で、指定した古い銘柄フルネーム（口座種別込み）を
+   * 参照している行を新しいフルネームに書き換える。
+   * 削除ではなく改名にすることで、口座種別の変更やベース名リネームが起きても
+   * ユーザーが設定した金額・配当条件などの内容自体は失われないようにする。
+   */
+  function renameFullNameReferences(tuika, dividendSetting, oldFullName, newFullName) {
+    if (!oldFullName || oldFullName === newFullName) return;
+    if (tuika) {
+      tuika.forEach((row) => { if (row.meigara === oldFullName) row.meigara = newFullName; });
+    }
+    if (dividendSetting) {
+      dividendSetting.forEach((row) => { if (row.meigaraKey === oldFullName) row.meigaraKey = newFullName; });
+    }
+  }
+
+  /**
    * 相関係数一覧（soukan）の中で、指定した古いベース銘柄名を参照している行を
    * 新しいベース銘柄名に書き換える。
    *
@@ -212,9 +228,10 @@
    * それらの行のベース名も、新しい名前へ一緒に書き換える（従属関係を維持するため）。
    * 一方、ソースでない行（他の行に追従していた行）の名前だけを変えた場合は、
    * その行だけが独立し、他の行には影響しない。
-   * あわせて、相関係数一覧（soukan）側の同名参照も連動してリネームする。
+   * あわせて、相関係数一覧（soukan）側の同名参照はベース名単位で、
+   * 追加投資・配当設定側の参照はフルネーム単位で、それぞれ連動してリネームする。
    */
-  function renameStockBaseNameWithCascade(stocks, editedIndex, newBaseName, soukan) {
+  function renameStockBaseNameWithCascade(stocks, editedIndex, newBaseName, appData) {
     const oldBaseName = extractStockBaseName(stocks[editedIndex].meigara);
     const wasSource = oldBaseName !== '' &&
       stocks.findIndex((s) => extractStockBaseName(s.meigara) === oldBaseName) === editedIndex;
@@ -222,17 +239,21 @@
     if (wasSource) {
       stocks.forEach((stock, i) => {
         if (i !== editedIndex && extractStockBaseName(stock.meigara) === oldBaseName) {
+          const oldFullName = stock.meigara;
           stock.meigara = composeStockMeigara(newBaseName, extractStockAccountType(stock.meigara));
+          renameFullNameReferences(appData.tuika, appData.dividendSetting, oldFullName, stock.meigara);
         }
       });
     }
+    const oldFullNameSelf = stocks[editedIndex].meigara;
     stocks[editedIndex].meigara = composeStockMeigara(newBaseName, extractStockAccountType(stocks[editedIndex].meigara));
+    renameFullNameReferences(appData.tuika, appData.dividendSetting, oldFullNameSelf, stocks[editedIndex].meigara);
     reconcileSyncedStockFields(stocks);
     // 相関係数側の連動は、グループ全体の名前が変わる「ソース行のリネーム」のときだけ行う。
     // ソースでない行（従属行）だけを変えた場合は、その行が独立するだけで、
     // グループの残りが引き続き旧ベース名を使い続けるため、相関係数側は変更しない。
     if (wasSource) {
-      renameSoukanBaseName(soukan, oldBaseName, newBaseName.trim());
+      renameSoukanBaseName(appData.soukan, oldBaseName, newBaseName.trim());
     }
   }
 
@@ -279,7 +300,7 @@
   }
 
   /** 保有銘柄タブの1行分のDOM（<tr>）を組み立てる */
-  function buildStockRow(stocks, index, onChange, soukan) {
+  function buildStockRow(stocks, index, onChange, appData) {
     const stock = stocks[index];
     const baseName = extractStockBaseName(stock.meigara);
     const accountType = extractStockAccountType(stock.meigara);
@@ -303,7 +324,7 @@
     const baseNameInput = createElement('input', { type: 'text', list: datalistId, placeholder: '銘柄名（ベース名）' });
     baseNameInput.value = baseName;
     baseNameInput.addEventListener('change', (e) => {
-      renameStockBaseNameWithCascade(stocks, index, e.target.value.trim(), soukan);
+      renameStockBaseNameWithCascade(stocks, index, e.target.value.trim(), appData);
       onChange();
     });
 
@@ -320,12 +341,18 @@
     accountSelect.addEventListener('change', (e) => {
       const isFree = e.target.value === FREE_ACCOUNT_TYPE_VALUE;
       customAccountInput.style.display = isFree ? '' : 'none';
+      const oldFullName = stock.meigara;
       stock.meigara = composeStockMeigara(baseName, isFree ? customAccountInput.value : e.target.value);
+      // 口座種別を変えるとフルネーム（口座種別込み）が変わるため、追加投資・配当設定側の
+      // 参照名も連動してリネームする（ベース名は変わらないため相関係数側は対象外）
+      renameFullNameReferences(appData.tuika, appData.dividendSetting, oldFullName, stock.meigara);
       reconcileSyncedStockFields(stocks);
       onChange();
     });
     customAccountInput.addEventListener('change', (e) => {
+      const oldFullName = stock.meigara;
       stock.meigara = composeStockMeigara(baseName, e.target.value);
+      renameFullNameReferences(appData.tuika, appData.dividendSetting, oldFullName, stock.meigara);
       reconcileSyncedStockFields(stocks);
       onChange();
     });
@@ -351,6 +378,9 @@
       class: 'btn btn-sm btn-danger', text: '×', title: 'この行を削除',
       onclick: () => {
         stocks.splice(index, 1);
+        // 銘柄削除により参照先を失った相関係数・追加投資・配当設定の孤立行を、
+        // その場で（保存や再読込を待たずに）取り除いて整合性を保つ
+        FireState.reconcileCrossReferencesAfterStockChange(appData);
         reconcileSyncedStockFields(stocks);
         onChange();
       }
@@ -385,7 +415,7 @@
     ]));
 
     const tbody = createElement('tbody');
-    stocks.forEach((stock, index) => { tbody.appendChild(buildStockRow(stocks, index, onChange, appData.soukan)); });
+    stocks.forEach((stock, index) => { tbody.appendChild(buildStockRow(stocks, index, onChange, appData)); });
     table.appendChild(tbody);
     container.appendChild(createElement('div', { class: 'table-scroll' }, [table]));
 
@@ -489,7 +519,12 @@
       rows: appData.soukan,
       createEmptyRow: () => ({ aMeigara: '', bMeigara: '', keisu: 0.0 }),
       onChange: () => onChange(),
-      addButtonLabel: '＋ 相関設定を追加'
+      addButtonLabel: '＋ 相関設定を追加',
+      // ペアを組める銘柄が2つ未満の場合は、相関設定という設定自体が成立しないため
+      // 追加ボタンを無効化する（保有銘柄タブで銘柄を2つ以上登録すれば有効になる）
+      disableAddReason: meigaraOptions.length < 2
+        ? '保有銘柄が2つ以上登録されていません。保有証券タブで銘柄を2つ以上登録すると、相関係数を設定できます。'
+        : null
     });
   }
 
@@ -622,7 +657,12 @@
         amount: 0, month: 0, fromMonthNum: 1, fromMonth: '', toMonth: '', pattern: '各月', toMonthTotalMonths: 0
       }),
       onChange: () => onChange(),
-      addButtonLabel: '＋ 追加投資を追加'
+      addButtonLabel: '＋ 追加投資を追加',
+      // 投資先にできる銘柄が1つも無い場合は、追加投資という設定自体が成立しないため
+      // 追加ボタンを無効化する（保有銘柄タブで銘柄を登録すれば有効になる）
+      disableAddReason: meigaraOptions.length === 0
+        ? '保有銘柄が登録されていません。保有証券タブで銘柄を1つ以上登録すると、追加投資を設定できます。'
+        : null
     });
   }
 
@@ -818,7 +858,18 @@
         renderEditableTableWithMonthsColumn(container, rows, meigaraOptions, onChange);
       }
     });
-    container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+    if (meigaraOptions.length === 0) {
+      // 対象にできる銘柄が1つも無い場合は、配当設定という設定自体が成立しないため
+      // 追加ボタンを無効化する（保有銘柄タブで銘柄を登録すれば有効になる）
+      addBtn.disabled = true;
+      container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+      container.appendChild(createElement('p', {
+        class: 'help-text',
+        text: '保有銘柄が登録されていません。保有証券タブで銘柄を1つ以上登録すると、配当設定を追加できます。'
+      }));
+    } else {
+      container.appendChild(createElement('div', { class: 'row-actions' }, [addBtn]));
+    }
   }
 
   // =====================================================
