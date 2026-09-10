@@ -238,5 +238,96 @@
     }
   }
 
-  global.FireChart = { drawFanChart, drawStackedAssetChart, seriesColor };
+  /**
+   * 銘柄ごとの「開始時点からの累積年率換算リターン（CAGR）」の推移を、
+   * 縦軸の中央を0%とした折れ線グラフで描画する（口座別ではなく銘柄別）。
+   * 上下どちらにも同じ幅で振れるよう、縦軸の最大・最小の絶対値をそろえる。
+   * @param {HTMLCanvasElement} canvas 描画先のcanvas要素
+   * @param {number[]} xValuesYears 横軸の値（経過年数）の配列。全系列で共通
+   * @param {Array} seriesList [{ name, values: number[] }, ...]（values はxValuesYearsと同じ長さ、単位%）
+   */
+  function drawZeroCenteredLineChart(canvas, xValuesYears, seriesList) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    if (!xValuesYears || xValuesYears.length === 0 || !seriesList || seriesList.length === 0) {
+      ctx.fillStyle = '#9fb0c0';
+      ctx.font = '13px sans-serif';
+      ctx.fillText('データがありません', 10, 20);
+      return;
+    }
+
+    const paddingLeft = 60;
+    const paddingRight = 16;
+    const paddingTop = 16;
+    const paddingBottom = 34;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+
+    // ---- 縦軸の範囲を「0を中心に上下対称」となるように決定する ----
+    let maxAbsPercent = 0;
+    seriesList.forEach((s) => {
+      s.values.forEach((v) => { maxAbsPercent = Math.max(maxAbsPercent, Math.abs(v)); });
+    });
+    // 数値がすべて0に近い場合でもグラフが潰れないよう、最低幅を確保する
+    const axisMax = Math.max(Math.ceil(maxAbsPercent / 5) * 5, 5);
+
+    const minYear = xValuesYears[0];
+    const maxYear = xValuesYears[xValuesYears.length - 1];
+    const xForYear = (y) => paddingLeft + ((y - minYear) / ((maxYear - minYear) || 1)) * plotWidth;
+    const yForPercent = (p) => paddingTop + plotHeight / 2 - (p / axisMax) * (plotHeight / 2);
+
+    // ---- 背景グリッド線と縦軸ラベル（0%を中心に上下対称の目盛り） ----
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillStyle = '#9fb0c0';
+    ctx.font = '11px sans-serif';
+    const gridSteps = 4; // 0を含めて上下2段ずつ
+    for (let g = -gridSteps; g <= gridSteps; g++) {
+      const v = (axisMax / gridSteps) * g;
+      const y = yForPercent(v);
+      ctx.beginPath();
+      ctx.moveTo(paddingLeft, y);
+      ctx.lineTo(width - paddingRight, y);
+      ctx.stroke();
+      ctx.fillText(v.toFixed(0) + '%', 4, y + 4);
+    }
+
+    // ---- 0%基準線を強調表示する ----
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, yForPercent(0));
+    ctx.lineTo(width - paddingRight, yForPercent(0));
+    ctx.stroke();
+
+    // ---- 各銘柄の年率推移を折れ線で描画する ----
+    seriesList.forEach((s, seriesIndex) => {
+      ctx.beginPath();
+      xValuesYears.forEach((year, i) => {
+        const x = xForYear(year);
+        const y = yForPercent(s.values[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = seriesColor(seriesIndex, seriesList.length);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
+
+    // ---- 横軸ラベル（年数） ----
+    ctx.fillStyle = '#9fb0c0';
+    ctx.font = '11px sans-serif';
+    const labelCount = Math.min(6, xValuesYears.length);
+    for (let k = 0; k < labelCount; k++) {
+      const idx = Math.round((k / (labelCount - 1 || 1)) * (xValuesYears.length - 1));
+      ctx.fillText(xValuesYears[idx].toFixed(1) + '年目', xForYear(xValuesYears[idx]) - 14, height - paddingBottom + 16);
+    }
+  }
+
+  global.FireChart = { drawFanChart, drawStackedAssetChart, drawZeroCenteredLineChart, seriesColor };
 })(typeof window !== 'undefined' ? window : globalThis);

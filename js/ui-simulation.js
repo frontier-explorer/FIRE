@@ -612,6 +612,7 @@
           '為替レートを別ウィンドウで表示します。'
       }));
       container.appendChild(renderStockCompositionChartPanel(trial, stocks));
+      container.appendChild(renderStockAnnualReturnChartPanel(trial, stocks));
       renderTrialMonthlyTableFull(container, trial, stocks);
 
       const csvBtn = createElement('button', {
@@ -689,6 +690,94 @@
       series.push({ monthIndex, percent: (annualLifeCost / record.totalAsset) * 100 });
     });
     return series;
+  }
+
+  /**
+   * 保有銘柄一覧を「口座種別を除いたベース銘柄名」でグループ化する。
+   * 同一銘柄を複数口座（特定・NISA・iDeCo等）で保有している場合、値動き自体は
+   * 同じ乱数系列から生成されるため完全に一致する。そのため銘柄別の年利グラフでは、
+   * グループ内の先頭の銘柄（代表）1件だけを使って計算すればよい。
+   * @returns {Array} [{ baseName, representativeStockIndex }, ...]
+   */
+  function buildStockBaseGroups(stocks) {
+    const groups = [];
+    const baseNameToGroup = {};
+    stocks.forEach((stock, stockIndex) => {
+      const baseName = FireState.extractBaseNameForSoukan(stock.meigara);
+      if (!baseNameToGroup[baseName]) {
+        const group = { baseName, representativeStockIndex: stockIndex };
+        baseNameToGroup[baseName] = group;
+        groups.push(group);
+      }
+    });
+    return groups;
+  }
+
+  /**
+   * 銘柄（ベース名）ごとに、シミュレーション開始時点から各月までの
+   * 累積年率換算リターン（CAGR、%）の推移を計算する。
+   * 口座・保有口数は考慮せず、各月のモンテカルロ・為替変動を合成したリターン
+   * （stockDetails[].rate）を毎月複利で積み上げて年率換算する。保有口数が
+   * 0（未保有・売却済み）の月でも rate 自体は計算され続けているため、
+   * 最後まで値動きの推移を追うことができる。
+   * 横軸の先頭（0年目）は定義上、年利0%とする。
+   * @returns {{ xValuesYears: number[], seriesList: Array }}
+   */
+  function buildStockAnnualReturnSeries(trial, stocks) {
+    const groups = buildStockBaseGroups(stocks);
+    const monthCount = trial.history.length;
+
+    // 横軸: 0年目（開始時点、年利0%）＋ 各月末までの経過年数
+    const xValuesYears = [0];
+    for (let m = 0; m < monthCount; m++) xValuesYears.push((m + 1) / 12);
+
+    const seriesList = groups.map((group) => {
+      let cumulativeGrowth = 1.0;
+      const values = [0]; // 0年目は年利0%
+      for (let m = 0; m < monthCount; m++) {
+        const detail = trial.history[m].stockDetails[group.representativeStockIndex];
+        const monthlyRatePercent = detail ? detail.rate : 0;
+        cumulativeGrowth *= (1.0 + monthlyRatePercent / 100.0);
+        const years = (m + 1) / 12;
+        const cagrPercent = (Math.pow(cumulativeGrowth, 1.0 / years) - 1.0) * 100;
+        values.push(cagrPercent);
+      }
+      return { name: group.baseName, values };
+    });
+
+    return { xValuesYears, seriesList };
+  }
+
+  /** 銘柄ごとの累積年率（CAGR）推移を折れ線グラフで表示するパネルを構築する（凡例つき） */
+  function renderStockAnnualReturnChartPanel(trial, stocks) {
+    const panel = createElement('div', { class: 'panel' }, [
+      createElement('h2', { text: '銘柄別 年利の推移（開始時点からの累積年率）' }),
+      createElement('p', {
+        class: 'desc',
+        text: '口座（特定・NISA・iDeCo等）は区別せず、銘柄ごとにシミュレーション開始時点を年利0%として、' +
+          'そこから現在までの累積の年率換算リターン（CAGR）の推移を表示します。' +
+          '保有口数が0（未保有・売却済み）になった後も、値動きの推移は最後まで追跡されます。'
+      })
+    ]);
+
+    const { xValuesYears, seriesList } = buildStockAnnualReturnSeries(trial, stocks);
+
+    const chartWrap = createElement('div', { class: 'chart-wrap' });
+    const canvas = createElement('canvas', { style: 'width:100%; height:280px; display:block;' });
+    chartWrap.appendChild(canvas);
+    panel.appendChild(chartWrap);
+
+    // 凡例（銘柄名と色の対応）
+    const legendItems = seriesList.map((s, i) =>
+      createElement('span', { class: 'chart-legend-item' }, [
+        createElement('span', { class: 'chart-legend-swatch', style: 'background:' + FireChart.seriesColor(i, seriesList.length) }),
+        createElement('span', { text: s.name })
+      ]));
+    panel.appendChild(createElement('div', { class: 'chart-legend' }, legendItems));
+
+    requestAnimationFrame(() => FireChart.drawZeroCenteredLineChart(canvas, xValuesYears, seriesList));
+
+    return panel;
   }
 
   /**

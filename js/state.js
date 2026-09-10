@@ -549,6 +549,7 @@
     createDefaultAppData, createDefaultInflationCategories,
     saveAppData, loadAppData, exportAppDataAsFile, importAppDataFromFile,
     normalizeImportedAppData, convertAppDataToAndroidFormat,
-    reconcileCrossReferencesAfterStockChange
+    reconcileCrossReferencesAfterStockChange,
+    extractBaseNameForSoukan
   };
 })(typeof window !== 'undefined' ? window : globalThis);
