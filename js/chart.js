@@ -271,10 +271,23 @@
     const plotHeight = height - paddingTop - paddingBottom;
 
     // ---- 縦軸の範囲を「0を中心に上下対称」となるように決定する ----
+    // 開始直後（1年目まで）は月次の値動きを年率換算すると数値が大きく増幅されるため、
+    // 軸のスケールを決める際にはこの期間を除外し、中長期の推移が見やすくなるようにする。
+    // （除外期間の折れ線自体は描画するが、軸の範囲を超える部分はプロット領域の外にクリップする）
+    const AXIS_SCALE_EXCLUDE_YEARS = 1;
     let maxAbsPercent = 0;
     seriesList.forEach((s) => {
-      s.values.forEach((v) => { maxAbsPercent = Math.max(maxAbsPercent, Math.abs(v)); });
+      s.values.forEach((v, i) => {
+        if (xValuesYears[i] <= AXIS_SCALE_EXCLUDE_YEARS) return;
+        maxAbsPercent = Math.max(maxAbsPercent, Math.abs(v));
+      });
     });
+    // 全期間が除外対象より短い場合（試行期間が1年以下等）は、除外せず全データから求める
+    if (maxAbsPercent === 0) {
+      seriesList.forEach((s) => {
+        s.values.forEach((v) => { maxAbsPercent = Math.max(maxAbsPercent, Math.abs(v)); });
+      });
+    }
     // 数値がすべて0に近い場合でもグラフが潰れないよう、最低幅を確保する
     const axisMax = Math.max(Math.ceil(maxAbsPercent / 5) * 5, 5);
 
@@ -307,6 +320,11 @@
     ctx.stroke();
 
     // ---- 各銘柄の年率推移を折れ線で描画する ----
+    // 開始直後の急な増幅で軸の範囲を超える箇所は、プロット領域の外にはみ出さないようクリップする
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(paddingLeft, paddingTop, plotWidth, plotHeight);
+    ctx.clip();
     seriesList.forEach((s, seriesIndex) => {
       ctx.beginPath();
       xValuesYears.forEach((year, i) => {
@@ -318,6 +336,7 @@
       ctx.lineWidth = 2;
       ctx.stroke();
     });
+    ctx.restore();
 
     // ---- 横軸ラベル（年数） ----
     ctx.fillStyle = '#9fb0c0';
