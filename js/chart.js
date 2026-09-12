@@ -245,8 +245,11 @@
    * @param {HTMLCanvasElement} canvas 描画先のcanvas要素
    * @param {number[]} xValuesYears 横軸の値（経過年数）の配列。全系列で共通
    * @param {Array} seriesList [{ name, values: number[] }, ...]（values はxValuesYearsと同じ長さ、単位%）
+   * @param {number} [axisScaleExcludeYears=1] 縦軸の範囲決定時に除外する開始直後の期間（年）。
+   *   累積年率グラフでは開始直後の増幅を避けるため既定値1を使うが、単年騰落率グラフのように
+   *   増幅が起きない系列では0を渡して全期間を軸の範囲決定に使う。
    */
-  function drawZeroCenteredLineChart(canvas, xValuesYears, seriesList) {
+  function drawZeroCenteredLineChart(canvas, xValuesYears, seriesList, axisScaleExcludeYears) {
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
@@ -274,7 +277,7 @@
     // 開始直後（1年目まで）は月次の値動きを年率換算すると数値が大きく増幅されるため、
     // 軸のスケールを決める際にはこの期間を除外し、中長期の推移が見やすくなるようにする。
     // （除外期間の折れ線自体は描画するが、軸の範囲を超える部分はプロット領域の外にクリップする）
-    const AXIS_SCALE_EXCLUDE_YEARS = 1;
+    const AXIS_SCALE_EXCLUDE_YEARS = (axisScaleExcludeYears === undefined) ? 1 : axisScaleExcludeYears;
     let maxAbsPercent = 0;
     seriesList.forEach((s) => {
       s.values.forEach((v, i) => {

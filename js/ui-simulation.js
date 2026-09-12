@@ -748,35 +748,122 @@
     return { xValuesYears, seriesList };
   }
 
-  /** 銘柄ごとの累積年率（CAGR）推移を折れ線グラフで表示するパネルを構築する（凡例つき） */
+  /**
+   * 銘柄（ベース名）ごとに、各経過年（12ヶ月区切り）だけの単年騰落率（%）の推移を計算する。
+   * 累積ではなく、その年の開始月から終了月までの値動きのみを使う点が
+   * buildStockAnnualReturnSeries（累積CAGR）と異なる。
+   * 横軸は 1年目、2年目、…という整数の経過年とする（0年目は存在しないため含めない）。
+   * 試行期間が12ヶ月で割り切れない場合、最後の端数期間もその期間だけの騰落率として含める。
+   * @returns {{ xValuesYears: number[], seriesList: Array }}
+   */
+  function buildStockYearlyReturnSeries(trial, stocks) {
+    const groups = buildStockBaseGroups(stocks);
+    const monthCount = trial.history.length;
+    const yearCount = Math.ceil(monthCount / 12);
+
+    const xValuesYears = [];
+    for (let y = 1; y <= yearCount; y++) xValuesYears.push(y);
+
+    const seriesList = groups.map((group) => {
+      const values = [];
+      for (let y = 1; y <= yearCount; y++) {
+        const startMonth = (y - 1) * 12;
+        const endMonth = Math.min(y * 12, monthCount); // 端数月まで（排他的終端）
+        let yearGrowth = 1.0;
+        for (let m = startMonth; m < endMonth; m++) {
+          const detail = trial.history[m].stockDetails[group.representativeStockIndex];
+          const monthlyRatePercent = detail ? detail.rate : 0;
+          yearGrowth *= (1.0 + monthlyRatePercent / 100.0);
+        }
+        values.push((yearGrowth - 1.0) * 100);
+      }
+      return { name: group.baseName, values };
+    });
+
+    return { xValuesYears, seriesList };
+  }
+
+  /**
+   * 銘柄ごとの年利グラフパネルを構築する（凡例つき）。
+   * ラジオボタンで「累積年率（開始時点からのCAGR）」と「各年の単年騰落率」を切り替えられる。
+   */
   function renderStockAnnualReturnChartPanel(trial, stocks) {
-    const panel = createElement('div', { class: 'panel' }, [
-      createElement('h2', { text: '銘柄別 年利の推移（開始時点からの累積年率）' }),
-      createElement('p', {
-        class: 'desc',
-        text: '口座（特定・NISA・iDeCo等）は区別せず、銘柄ごとにシミュレーション開始時点を年利0%として、' +
+    const cumulativeData = buildStockAnnualReturnSeries(trial, stocks);
+    const yearlyData = buildStockYearlyReturnSeries(trial, stocks);
+
+    const MODE_CUMULATIVE = 'cumulative';
+    const MODE_YEARLY = 'yearly';
+    const modeConfig = {
+      [MODE_CUMULATIVE]: {
+        title: '銘柄別 年利の推移（開始時点からの累積年率）',
+        desc: '口座（特定・NISA・iDeCo等）は区別せず、銘柄ごとにシミュレーション開始時点を年利0%として、' +
           'そこから現在までの累積の年率換算リターン（CAGR）の推移を表示します。' +
           '保有口数が0（未保有・売却済み）になった後も、値動きの推移は最後まで追跡されます。' +
-          '（開始直後の1年間は月次変動を年率換算すると数値が大きく振れるため、縦軸の範囲決定には使用していません）'
-      })
-    ]);
+          '（開始直後の1年間は月次変動を年率換算すると数値が大きく振れるため、縦軸の範囲決定には使用していません）',
+        data: cumulativeData,
+        axisScaleExcludeYears: 1
+      },
+      [MODE_YEARLY]: {
+        title: '銘柄別 各年の利率の推移（単年騰落率）',
+        desc: '口座（特定・NISA・iDeCo等）は区別せず、銘柄ごとに1年目・2年目…という経過年（12ヶ月）単位で、' +
+          'その年だけの騰落率を表示します。前年までの累積は含まないため、その年単体の値動きの良し悪しが読み取れます。',
+        data: yearlyData,
+        axisScaleExcludeYears: 0
+      }
+    };
 
-    const { xValuesYears, seriesList } = buildStockAnnualReturnSeries(trial, stocks);
+    const panel = createElement('div', { class: 'panel' });
+    const heading = createElement('h2', { text: modeConfig[MODE_CUMULATIVE].title });
+    const desc = createElement('p', { class: 'desc', text: modeConfig[MODE_CUMULATIVE].desc });
+    panel.appendChild(heading);
+    panel.appendChild(desc);
+
+    // モード切り替え用ラジオボタン
+    const radioGroupName = 'stock-return-chart-mode-' + Math.random().toString(36).slice(2);
+    const modeToggle = createElement('div', { class: 'chart-legend', style: 'margin-bottom:10px;' }, [
+      createElement('label', { class: 'chart-legend-item', style: 'cursor:pointer;' }, [
+        createElement('input', { type: 'radio', name: radioGroupName, value: MODE_CUMULATIVE, checked: 'checked' }),
+        createElement('span', { text: '累積年率（開始からの複利）' })
+      ]),
+      createElement('label', { class: 'chart-legend-item', style: 'cursor:pointer;' }, [
+        createElement('input', { type: 'radio', name: radioGroupName, value: MODE_YEARLY }),
+        createElement('span', { text: '各年の単年騰落率' })
+      ])
+    ]);
+    panel.appendChild(modeToggle);
 
     const chartWrap = createElement('div', { class: 'chart-wrap' });
     const canvas = createElement('canvas', { style: 'width:100%; height:280px; display:block;' });
     chartWrap.appendChild(canvas);
     panel.appendChild(chartWrap);
 
-    // 凡例（銘柄名と色の対応）
-    const legendItems = seriesList.map((s, i) =>
-      createElement('span', { class: 'chart-legend-item' }, [
-        createElement('span', { class: 'chart-legend-swatch', style: 'background:' + FireChart.seriesColor(i, seriesList.length) }),
-        createElement('span', { text: s.name })
-      ]));
-    panel.appendChild(createElement('div', { class: 'chart-legend' }, legendItems));
+    const legendContainer = createElement('div', { class: 'chart-legend' });
+    panel.appendChild(legendContainer);
 
-    requestAnimationFrame(() => FireChart.drawZeroCenteredLineChart(canvas, xValuesYears, seriesList));
+    /** 指定モードのデータで、見出し・説明文・凡例・グラフ本体を再描画する */
+    function renderMode(mode) {
+      const config = modeConfig[mode];
+      heading.textContent = config.title;
+      desc.textContent = config.desc;
+
+      legendContainer.innerHTML = '';
+      config.data.seriesList.forEach((s, i) => {
+        legendContainer.appendChild(createElement('span', { class: 'chart-legend-item' }, [
+          createElement('span', { class: 'chart-legend-swatch', style: 'background:' + FireChart.seriesColor(i, config.data.seriesList.length) }),
+          createElement('span', { text: s.name })
+        ]));
+      });
+
+      FireChart.drawZeroCenteredLineChart(canvas, config.data.xValuesYears, config.data.seriesList, config.axisScaleExcludeYears);
+    }
+
+    modeToggle.querySelectorAll('input[type="radio"]').forEach((radio) => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) renderMode(e.target.value);
+      });
+    });
+
+    requestAnimationFrame(() => renderMode(MODE_CUMULATIVE));
 
     return panel;
   }
