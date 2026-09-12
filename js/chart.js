@@ -303,7 +303,7 @@
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.fillStyle = '#9fb0c0';
     ctx.font = '11px sans-serif';
-    const gridSteps = 4; // 0を含めて上下2段ずつ
+    const gridSteps = 8; // 0を含めて上下4段ずつ（補助線・数値を増やして見やすくする）
     for (let g = -gridSteps; g <= gridSteps; g++) {
       const v = (axisMax / gridSteps) * g;
       const y = yForPercent(v);
@@ -344,10 +344,18 @@
     // ---- 横軸ラベル（年数） ----
     ctx.fillStyle = '#9fb0c0';
     ctx.font = '11px sans-serif';
-    const labelCount = Math.min(6, xValuesYears.length);
+    const labelCount = Math.min(11, xValuesYears.length);
     for (let k = 0; k < labelCount; k++) {
       const idx = Math.round((k / (labelCount - 1 || 1)) * (xValuesYears.length - 1));
-      ctx.fillText(xValuesYears[idx].toFixed(1) + '年目', xForYear(xValuesYears[idx]) - 14, height - paddingBottom + 16);
+      const x = xForYear(xValuesYears[idx]);
+      // 目盛りに合わせて縦の補助線も追加する
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.moveTo(x, paddingTop);
+      ctx.lineTo(x, height - paddingBottom);
+      ctx.stroke();
+      ctx.fillStyle = '#9fb0c0';
+      ctx.fillText(xValuesYears[idx].toFixed(1) + '年目', x - 14, height - paddingBottom + 16);
     }
   }
 
