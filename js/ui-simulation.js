@@ -44,6 +44,9 @@
   const ANOMALY_EXCLUDE_YEAR_OPTIONS = [];
   for (let y = 15; y <= 100; y += 5) ANOMALY_EXCLUDE_YEAR_OPTIONS.push(y);
 
+  // 「成功・失敗のボーダーライン比較」機能で選択中の年数（null＝未選択、初回描画時にシミュレーション期間で初期化）
+  let borderlineSelectedYear = null;
+
   // 試行一覧パネル（左：一覧／右：詳細）のDOM参照。生活費テーブルなど、
   // 他パネルから「この試行番号の詳細を見せる」という操作を行うために保持しておく
   let trialListPanelRefs = null;
@@ -157,6 +160,7 @@
           selectedTrialId = null;
           trialListPanelRefs = null;
           anomalyExcludeYears = null;
+          borderlineSelectedYear = null;
 
           renderResults(resultsContainer, preparedAppData, results);
           showToast('シミュレーションが完了しました');
@@ -179,6 +183,7 @@
     container.appendChild(renderAnomalyExcludeFilterPanel(container, appData, results));
     container.appendChild(renderSummaryCards(summary));
     container.appendChild(renderAssessmentBox(summary));
+    container.appendChild(renderBorderlineComparisonPanel(appData, results));
     container.appendChild(renderLifeCostTablePanel(results));
     container.appendChild(renderFanChartPanel(results));
     container.appendChild(renderCsvExportPanel(results, appData.stocks));
@@ -267,6 +272,131 @@
       createElement('div', { class: 'title', text: assessment.title }),
       createElement('div', { class: 'comment', text: assessment.comment })
     ]);
+  }
+
+  /**
+   * ===============================================================
+   * 「成功・失敗のボーダーライン比較」パネル
+   * ===============================================================
+   * 指定した年数の時点で、失敗ケースの中で最も資産が残っていたケース（ギリギリ失敗）と、
+   * 成功ケースの中で最終資産が最も少なかったケース（ギリギリ成功）を抽出し、開始時点から
+   * その年数までの銘柄別・為替ペア別の平均年率（累積CAGR）を対比表示する。
+   * 年数コンボボックスの変更時は、この表部分だけを再描画する（サマリー等は再計算しない）。
+   * ===============================================================
+   */
+  function renderBorderlineComparisonPanel(appData, results) {
+    const maxYear = appData.config.period;
+    if (borderlineSelectedYear === null || borderlineSelectedYear > maxYear) {
+      borderlineSelectedYear = maxYear;
+    }
+
+    const contentContainer = createElement('div');
+
+    const options = [];
+    for (let y = 1; y <= maxYear; y++) {
+      const attrs = { value: String(y), text: y + '年目' };
+      if (y === borderlineSelectedYear) attrs.selected = 'selected';
+      options.push(createElement('option', attrs));
+    }
+    const select = createElement('select', {
+      class: 'form-select',
+      onchange: (e) => {
+        borderlineSelectedYear = parseInt(e.target.value, 10);
+        renderBorderlineComparisonContent(contentContainer, results, borderlineSelectedYear);
+      }
+    }, options);
+
+    const panel = createElement('div', { class: 'panel' }, [
+      createElement('h2', { text: '成功・失敗のボーダーライン比較' }),
+      createElement('p', {
+        class: 'desc',
+        text: '指定した年数の時点で、失敗ケースの中で最も資産が残っていたケース（ギリギリ失敗）と、' +
+          '成功ケースの中で最終資産が最も少なかったケース（ギリギリ成功）を抽出し、開始時点から' +
+          'その年数までの銘柄別・為替ペア別の平均年率（累積CAGR）と、その時点の月次生活費（インフレ' +
+          '適用後）を比較します。両者の市場推移・生活費の違いから、FIRE成否のボーダーラインとなる' +
+          '市場成長率・インフレの影響度の目安を確認できます。'
+      }),
+      createElement('div', { class: 'trial-select' }, [select]),
+      contentContainer
+    ]);
+
+    renderBorderlineComparisonContent(contentContainer, results, borderlineSelectedYear);
+
+    return panel;
+  }
+
+  /** 選択された年数に応じて、ギリギリ失敗／成功ケースの比較表を再描画する */
+  function renderBorderlineComparisonContent(container, results, yearN) {
+    container.innerHTML = '';
+    const { failureCase, successCase } = FireBorderline.findBorderlineCases(results, yearN);
+
+    if (!failureCase && !successCase) {
+      container.appendChild(createElement('p', { class: 'help-text', text: '比較できる試行がありません。' }));
+      return;
+    }
+
+    const failureStockRates = failureCase ? FireBorderline.calculateStockAverageAnnualRates(failureCase, yearN) : [];
+    const successStockRates = successCase ? FireBorderline.calculateStockAverageAnnualRates(successCase, yearN) : [];
+    const failureFxRates = failureCase ? FireBorderline.calculateFxAverageAnnualRates(failureCase, yearN) : [];
+    const successFxRates = successCase ? FireBorderline.calculateFxAverageAnnualRates(successCase, yearN) : [];
+
+    const table = createElement('table', { class: 'data-table' });
+    table.appendChild(createElement('thead', {}, [
+      createElement('tr', {}, [
+        '項目',
+        'ギリギリ失敗（試行#' + (failureCase ? failureCase.trialId : '-') + '）',
+        'ギリギリ成功（試行#' + (successCase ? successCase.trialId : '-') + '）'
+      ].map((h) => createElement('th', { text: h })))
+    ]));
+
+    const tbody = createElement('tbody');
+
+    // 「ギリギリ失敗／ギリギリ成功」それぞれの、その年数時点での月次生活費（インフレ適用後）。
+    // インフレによる生活費の高さがボーダーラインを分けているかどうかを確認するための行
+    const failureLifeCost = failureCase ? FireBorderline.getLifeCostAtYear(failureCase, yearN) : null;
+    const successLifeCost = successCase ? FireBorderline.getLifeCostAtYear(successCase, yearN) : null;
+    tbody.appendChild(createElement('tr', {}, [
+      createElement('td', { text: '月次生活費（' + yearN + '年目時点）' }),
+      createElement('td', { text: failureLifeCost !== null ? formatYen(failureLifeCost) : '-' }),
+      createElement('td', { text: successLifeCost !== null ? formatYen(successLifeCost) : '-' })
+    ]));
+
+    /** 銘柄名／通貨ペア名をラベルとして、失敗側・成功側の値を1行分作成する */
+    function appendComparisonRow(label, failureRateItem, successRateItem) {
+      tbody.appendChild(createElement('tr', {}, [
+        createElement('td', { text: label + ' 平均年率（' + yearN + '年目まで）' }),
+        createElement('td', { text: failureRateItem ? formatPercent(failureRateItem.cagrPercent) : '-' }),
+        createElement('td', { text: successRateItem ? formatPercent(successRateItem.cagrPercent) : '-' })
+      ]));
+    }
+
+    const baseNames = (failureStockRates.length > 0 ? failureStockRates : successStockRates).map((r) => r.baseName);
+    baseNames.forEach((baseName) => {
+      appendComparisonRow(
+        baseName,
+        failureStockRates.find((r) => r.baseName === baseName),
+        successStockRates.find((r) => r.baseName === baseName)
+      );
+    });
+
+    const fxPairs = (failureFxRates.length > 0 ? failureFxRates : successFxRates).map((r) => r.pair);
+    fxPairs.forEach((pair) => {
+      appendComparisonRow(
+        pair,
+        failureFxRates.find((r) => r.pair === pair),
+        successFxRates.find((r) => r.pair === pair)
+      );
+    });
+
+    table.appendChild(tbody);
+    container.appendChild(createElement('div', { class: 'table-scroll' }, [table]));
+
+    if (!failureCase) {
+      container.appendChild(createElement('p', { class: 'help-text', text: '※指定した年数まで持ちこたえた失敗ケースがありません。' }));
+    }
+    if (!successCase) {
+      container.appendChild(createElement('p', { class: 'help-text', text: '※成功ケースが1件もありません。' }));
+    }
   }
 
   /**
@@ -612,7 +742,7 @@
           '為替レートを別ウィンドウで表示します。'
       }));
       container.appendChild(renderStockCompositionChartPanel(trial, stocks));
-      container.appendChild(renderStockAnnualReturnChartPanel(trial, stocks));
+      container.appendChild(renderStockAnnualReturnChartPanel(trial));
       renderTrialMonthlyTableFull(container, trial, stocks);
 
       const csvBtn = createElement('button', {
@@ -626,9 +756,10 @@
     } else {
       container.appendChild(createElement('p', {
         class: 'desc',
-        text: 'この試行はメモリ節約のため、月次の総資産・現金の推移のみ保持しています' +
-          '（内訳の詳細データは試行#1と、失敗試行の一部にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で保持件数を増やせます）。'
+        text: 'この試行はメモリ節約のため、月次の総資産・現金・生活費・収入・銘柄別利率・為替レートの推移のみ保持しています' +
+          '（口座別の内訳・保有口数・出費・税金などの詳細データは試行#1と、失敗試行の一部にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で保持件数を増やせます）。'
       }));
+      container.appendChild(renderStockAnnualReturnChartPanel(trial));
       renderTrialMonthlyTableLight(container, trial);
     }
   }
@@ -693,56 +824,34 @@
   }
 
   /**
-   * 保有銘柄一覧を「口座種別を除いたベース銘柄名」でグループ化する。
-   * 同一銘柄を複数口座（特定・NISA・iDeCo等）で保有している場合、値動き自体は
-   * 同じ乱数系列から生成されるため完全に一致する。そのため銘柄別の年利グラフでは、
-   * グループ内の先頭の銘柄（代表）1件だけを使って計算すればよい。
-   * @returns {Array} [{ baseName, representativeStockIndex }, ...]
-   */
-  function buildStockBaseGroups(stocks) {
-    const groups = [];
-    const baseNameToGroup = {};
-    stocks.forEach((stock, stockIndex) => {
-      const baseName = FireState.extractBaseNameForSoukan(stock.meigara);
-      if (!baseNameToGroup[baseName]) {
-        const group = { baseName, representativeStockIndex: stockIndex };
-        baseNameToGroup[baseName] = group;
-        groups.push(group);
-      }
-    });
-    return groups;
-  }
-
-  /**
    * 銘柄（ベース名）ごとに、シミュレーション開始時点から各月までの
    * 累積年率換算リターン（CAGR、%）の推移を計算する。
    * 口座・保有口数は考慮せず、各月のモンテカルロ・為替変動を合成したリターン
-   * （stockDetails[].rate）を毎月複利で積み上げて年率換算する。保有口数が
-   * 0（未保有・売却済み）の月でも rate 自体は計算され続けているため、
-   * 最後まで値動きの推移を追うことができる。
+   * （trial.monthlyStockRates。エンジン側で全試行・口座統合済みに記録されている）を
+   * 毎月複利で積み上げて年率換算する。保有口数が0（未保有・売却済み）の月でも
+   * 値自体は計算され続けているため、最後まで値動きの推移を追うことができる。
    * 横軸の先頭（0年目）は定義上、年利0%とする。
    * @returns {{ xValuesYears: number[], seriesList: Array }}
    */
-  function buildStockAnnualReturnSeries(trial, stocks) {
-    const groups = buildStockBaseGroups(stocks);
-    const monthCount = trial.history.length;
+  function buildStockAnnualReturnSeries(trial) {
+    const baseNames = Object.keys(trial.monthlyStockRates);
+    const monthCount = baseNames.length > 0 ? trial.monthlyStockRates[baseNames[0]].length : 0;
 
     // 横軸: 0年目（開始時点、年利0%）＋ 各月末までの経過年数
     const xValuesYears = [0];
     for (let m = 0; m < monthCount; m++) xValuesYears.push((m + 1) / 12);
 
-    const seriesList = groups.map((group) => {
+    const seriesList = baseNames.map((baseName) => {
+      const monthlyRates = trial.monthlyStockRates[baseName];
       let cumulativeGrowth = 1.0;
       const values = [0]; // 0年目は年利0%
       for (let m = 0; m < monthCount; m++) {
-        const detail = trial.history[m].stockDetails[group.representativeStockIndex];
-        const monthlyRatePercent = detail ? detail.rate : 0;
-        cumulativeGrowth *= (1.0 + monthlyRatePercent / 100.0);
+        cumulativeGrowth *= (1.0 + monthlyRates[m] / 100.0);
         const years = (m + 1) / 12;
         const cagrPercent = (Math.pow(cumulativeGrowth, 1.0 / years) - 1.0) * 100;
         values.push(cagrPercent);
       }
-      return { name: group.baseName, values };
+      return { name: baseName, values };
     });
 
     return { xValuesYears, seriesList };
@@ -756,28 +865,27 @@
    * 試行期間が12ヶ月で割り切れない場合、最後の端数期間もその期間だけの騰落率として含める。
    * @returns {{ xValuesYears: number[], seriesList: Array }}
    */
-  function buildStockYearlyReturnSeries(trial, stocks) {
-    const groups = buildStockBaseGroups(stocks);
-    const monthCount = trial.history.length;
+  function buildStockYearlyReturnSeries(trial) {
+    const baseNames = Object.keys(trial.monthlyStockRates);
+    const monthCount = baseNames.length > 0 ? trial.monthlyStockRates[baseNames[0]].length : 0;
     const yearCount = Math.ceil(monthCount / 12);
 
     const xValuesYears = [];
     for (let y = 1; y <= yearCount; y++) xValuesYears.push(y);
 
-    const seriesList = groups.map((group) => {
+    const seriesList = baseNames.map((baseName) => {
+      const monthlyRates = trial.monthlyStockRates[baseName];
       const values = [];
       for (let y = 1; y <= yearCount; y++) {
         const startMonth = (y - 1) * 12;
         const endMonth = Math.min(y * 12, monthCount); // 端数月まで（排他的終端）
         let yearGrowth = 1.0;
         for (let m = startMonth; m < endMonth; m++) {
-          const detail = trial.history[m].stockDetails[group.representativeStockIndex];
-          const monthlyRatePercent = detail ? detail.rate : 0;
-          yearGrowth *= (1.0 + monthlyRatePercent / 100.0);
+          yearGrowth *= (1.0 + monthlyRates[m] / 100.0);
         }
         values.push((yearGrowth - 1.0) * 100);
       }
-      return { name: group.baseName, values };
+      return { name: baseName, values };
     });
 
     return { xValuesYears, seriesList };
@@ -786,10 +894,12 @@
   /**
    * 銘柄ごとの年利グラフパネルを構築する（凡例つき）。
    * ラジオボタンで「累積年率（開始時点からのCAGR）」と「各年の単年騰落率」を切り替えられる。
+   * trial.monthlyStockRates（全試行に記録済みの軽量データ）を使うため、詳細データ
+   * （trial.history）を保持していない試行についても表示できる。
    */
-  function renderStockAnnualReturnChartPanel(trial, stocks) {
-    const cumulativeData = buildStockAnnualReturnSeries(trial, stocks);
-    const yearlyData = buildStockYearlyReturnSeries(trial, stocks);
+  function renderStockAnnualReturnChartPanel(trial) {
+    const cumulativeData = buildStockAnnualReturnSeries(trial);
+    const yearlyData = buildStockYearlyReturnSeries(trial);
 
     const MODE_CUMULATIVE = 'cumulative';
     const MODE_YEARLY = 'yearly';
@@ -1076,11 +1186,11 @@
   }
 
 
-  /** 内訳データを持たない試行（総資産・現金のみ）の毎月データを、全期間分・省略なしで表形式表示する */
+  /** 内訳データを持たない試行（総資産・現金・生活費・収入のみ）の毎月データを、全期間分・省略なしで表形式表示する */
   function renderTrialMonthlyTableLight(container, trial) {
     const table = createElement('table', { class: 'data-table' });
     table.appendChild(createElement('thead', {}, [
-      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', 'isFailure'].map((h) => createElement('th', { text: h })))
+      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', 'isFailure'].map((h) => createElement('th', { text: h })))
     ]));
     const tbody = createElement('tbody');
     trial.lightHistory.forEach((record, i) => {
@@ -1089,6 +1199,8 @@
         createElement('td', { text: formatYen(record.totalAsset) }),
         createElement('td', { text: formatYen(record.cash) }),
         createElement('td', { text: formatYen(record.investmentAssets) }),
+        createElement('td', { text: formatYen(record.monthlyLifeCost) }),
+        createElement('td', { text: formatYen(record.income) }),
         createElement('td', { text: record.isFailure ? 'TRUE' : 'FALSE' })
       ]));
     });

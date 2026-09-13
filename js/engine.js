@@ -863,6 +863,12 @@
     const details = [];
     let endAssets = 0.0;
 
+    // 銘柄別・当月の合成リターン（モンテカルロ×為替、%）を、saveDetailsの真偽に関わらず
+    // 常に記録する軽量配列。全試行・全銘柄について「銘柄毎の利率の推移」を保持するために使う
+    // （stockDetails自体はメモリ節約のため保持試行を絞っているが、この配列は毎月の計算で
+    // 既に算出済みの値を控えるだけなので、追加コストはほぼない）。
+    const monthlyRatesPercent = new Array(n);
+
     for (let i = 0; i < n; i++) {
       const stock = currentStocks[i];
 
@@ -881,6 +887,7 @@
 
       const fxRate = stock.exchangeRate ? (fxReturns[stock.exchangeRate] || 0.0) : 0.0;
       const monthlyRate = (1.0 + mcRate) * (1.0 + fxRate) - 1.0;
+      monthlyRatesPercent[i] = monthlyRate * 100;
 
       if (stock.kuchisu <= 0) {
         if (saveDetails) {
@@ -912,7 +919,7 @@
       }
     }
 
-    return { stockDetails: details, endOfPeriodAssets: endAssets, nextExchangeRates: nextRates };
+    return { stockDetails: details, endOfPeriodAssets: endAssets, nextExchangeRates: nextRates, monthlyRatesPercent };
   }
 
   // =====================================================
@@ -935,6 +942,26 @@
   function getBaseName(meigara) {
     const m = /^(.*?)＜[^＞]+＞$/.exec(meigara);
     return m ? m[1].trim() : meigara.trim();
+  }
+
+  /**
+   * 保有銘柄一覧を「口座種別を除いたベース銘柄名」でグループ化し、各グループの
+   * 代表銘柄（先頭の1件）のインデックスを返す。同一ベース名（同一銘柄の異口座保有）は
+   * 同じ乱数系列から値動きが生成され完全に一致するため、代表1件だけを記録すればよい
+   * （「銘柄別 利率の推移」の全試行記録・グラフ表示で共通して使用する）。
+   * @returns {Array<{baseName: string, representativeIndex: number}>}
+   */
+  function buildStockRateGroups(stocks) {
+    const groups = [];
+    const seenBaseNames = {};
+    stocks.forEach((stock, index) => {
+      const baseName = getBaseName(stock.meigara);
+      if (seenBaseNames[baseName] === undefined) {
+        seenBaseNames[baseName] = true;
+        groups.push({ baseName, representativeIndex: index });
+      }
+    });
+    return groups;
   }
 
   /**
@@ -1086,6 +1113,19 @@
 
     const history = saveDetailHistory ? [] : null;
     const lightHistory = [];
+
+    // ---- 「銘柄別 利率の推移」「為替の推移」の全試行分・月次記録 ----
+    // FIRE成否に関わらず全試行について、市場の成長力（銘柄別の月次リターン・為替レート）を
+    // 保持する。既存のstockDetails（税金計算等を含み重い）とは別に、既に月次ループの中で
+    // 計算済みの値をそのまま積むだけの軽量な記録とすることで、追加コストを抑える。
+    const stockRateGroups = buildStockRateGroups(stocks);
+    const monthlyStockRates = {};
+    stockRateGroups.forEach((group) => { monthlyStockRates[group.baseName] = []; });
+
+    const fxPairNames = Object.keys(currentExchangeRates);
+    const monthlyFxRates = {};
+    // 0ヶ月目（シミュレーション開始・変動前）の為替レートを先頭に記録しておく
+    fxPairNames.forEach((pair) => { monthlyFxRates[pair] = [currentExchangeRates[pair]]; });
 
     for (let monthIndex = 0; monthIndex < totalPeriods; monthIndex++) {
       const yearMonthStr = Math.floor(monthIndex / 12) + '年' + ((monthIndex % 12) + 1) + '月';
@@ -1305,6 +1345,14 @@
       const returnRes = applyMonthlyReturn(currentStocks, l, taxRate, currentExchangeRates, appData, monthIndex, saveDetailHistory, currentRegimeParams);
       currentExchangeRates = Object.assign({}, returnRes.nextExchangeRates);
 
+      // 銘柄別・当月の利率（%）と、当月末時点の為替レートを全試行分記録する
+      stockRateGroups.forEach((group) => {
+        monthlyStockRates[group.baseName].push(returnRes.monthlyRatesPercent[group.representativeIndex]);
+      });
+      fxPairNames.forEach((pair) => {
+        monthlyFxRates[pair].push(currentExchangeRates[pair]);
+      });
+
       // ---- ストレステスト: インデックス修正法（Phantom Index Method）----
       if (shockRateFn) {
         const shockRate = shockRateFn(monthIndex);
@@ -1353,9 +1401,13 @@
 
       // monthlyLifeCost：この月時点の月次生活費（インフレ／デフレ適用後）。
       // 「月の生活費」テーブル（生活費の分布・破綻件数の集計）で全試行分を参照するために保持する
+      // income：この月の収入（給与等＋配当・分配金＋国債バッファ利息）。history（詳細）を
+      // 保持しない試行（先頭以外の成功ケース等）でも、生活費とあわせて収入を確認できるように
+      // 全試行分・軽量記録として保持する（history側のincomeと同じ計算式）
       lightHistory.push({
         totalAsset: recTotalAsset, cash: recCash, isFailure: fireFailure,
-        investmentAssets: recInvestmentAssets, monthlyLifeCost: currentMonthlyLifeCost
+        investmentAssets: recInvestmentAssets, monthlyLifeCost: currentMonthlyLifeCost,
+        income: incExp.monthlyIncome + divResult.gain + jgbCouponThisMonth
       });
 
       if (history) {
@@ -1399,7 +1451,8 @@
 
     return {
       trialId, success: !fireFailure, failureMonth: fireFailure ? failureMonth : totalPeriods,
-      history: history || [], lightHistory, anomalyYearlySeries
+      history: history || [], lightHistory, anomalyYearlySeries,
+      monthlyStockRates, monthlyFxRates
     };
   }
 
