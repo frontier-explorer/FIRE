@@ -6,7 +6,8 @@
  * 確認するための集計ロジック。
  *
  * 指定した年数Nについて、
- *   ・ギリギリ失敗ケース … 失敗した試行の中で、N年目時点の資産額が最大の試行
+ *   ・ギリギリ失敗ケース … 失敗した試行の中で、N年目時点の資産額が最小の試行
+ *                         （最も深刻に資産を使い果たしていた試行）
  *   ・ギリギリ成功ケース … 成功した試行の中で、シミュレーション終了時点の
  *                         最終資産額が最小の試行
  * をそれぞれ1件抽出し、開始時点からN年目までの「銘柄別・為替ペア別の
@@ -35,7 +36,7 @@
     const monthIndexAtYearN = yearN * 12 - 1;
 
     let failureCase = null;
-    let failureCaseAsset = -Infinity;
+    let failureCaseAsset = Infinity;
     let successCase = null;
     let successCaseAsset = Infinity;
 
@@ -49,12 +50,12 @@
           successCase = trial;
         }
       } else {
-        // 「ギリギリ失敗」＝失敗試行の中で、N年目時点の資産額が最大のもの。
+        // 「ギリギリ失敗」＝失敗試行の中で、N年目時点の資産額が最小のもの（最も深刻な失敗ケース）。
         // N年目より前に破綻した試行はこの時点の資産額が0として記録されているため、
-        // 自然に比較対象から外れる（＝N年目まで持ちこたえた試行のみが選ばれる）。
+        // そのような「N年目までに資産を使い果たしていた」試行が優先的に選ばれる。
         const record = trial.lightHistory[monthIndexAtYearN];
         if (!record) return; // シミュレーション期間がN年に満たない場合は対象外
-        if (record.totalAsset > failureCaseAsset) {
+        if (record.totalAsset < failureCaseAsset) {
           failureCaseAsset = record.totalAsset;
           failureCase = trial;
         }
@@ -116,7 +117,68 @@
     return record ? record.monthlyLifeCost : null;
   }
 
+  /**
+   * 1試行分の、開始時点からN年目までの「バッファCRISIS滞在割合（%）」を計算する。
+   * cashBufferMode/effectiveMode は詳細データ（history）にのみ記録されている（軽量データの
+   * lightHistoryには含まれない）ため、詳細を保持していない試行（先頭以外の成功ケースや、
+   * 失敗詳細保存上限を超えた失敗ケース）では計算できず null を返す。呼び出し側で
+   * 「データ制限上限で、詳細情報なしケースになります。」等のメッセージを表示すること。
+   * @returns {number|null}
+   */
+  function calculateCrisisBufferRatio(trial, yearN) {
+    if (!trial.history || trial.history.length === 0) return null;
+    const monthCount = yearN * 12;
+    const usedMonths = Math.min(monthCount, trial.history.length);
+    if (usedMonths <= 0) return null;
+    let crisisMonths = 0;
+    for (let m = 0; m < usedMonths; m++) {
+      if (trial.history[m].effectiveMode === 'CRISIS') crisisMonths++;
+    }
+    return (crisisMonths / usedMonths) * 100;
+  }
+
+  /**
+   * 1試行分の、開始時点からN年目までの「バッファCRISIS滞在月数」を計算する（分岐点分析用CSV向け）。
+   * calculateCrisisBufferRatioと計算対象は同じだが、割合(%)ではなく月数そのものを返す。
+   * 詳細データ（history）を保持していない試行では null を返す。
+   * @returns {number|null}
+   */
+  function countCrisisMonths(trial, yearN) {
+    if (!trial.history || trial.history.length === 0) return null;
+    const monthCount = yearN * 12;
+    const usedMonths = Math.min(monthCount, trial.history.length);
+    if (usedMonths <= 0) return null;
+    let crisisMonths = 0;
+    for (let m = 0; m < usedMonths; m++) {
+      if (trial.history[m].effectiveMode === 'CRISIS') crisisMonths++;
+    }
+    return crisisMonths;
+  }
+
+  /**
+   * 1試行分の、開始時点からN年目までに「悪性レジーム（TIGHTENING または STAGFLATION）」に
+   * 該当した年数（12ヶ月区切り、1ヶ月でも該当すればその1年をカウント）を数える。
+   * regimeも詳細データ（history）にのみ記録されているため、calculateCrisisBufferRatioと
+   * 同様、詳細を保持していない試行では null を返す。
+   * @returns {number|null}
+   */
+  function countBadRegimeYears(trial, yearN) {
+    if (!trial.history || trial.history.length === 0) return null;
+    const monthCount = yearN * 12;
+    const usedMonths = Math.min(monthCount, trial.history.length);
+    if (usedMonths <= 0) return null;
+    const badRegimeYearSet = new Set();
+    for (let m = 0; m < usedMonths; m++) {
+      const regime = trial.history[m].regime;
+      if (regime === 'TIGHTENING' || regime === 'STAGFLATION') {
+        badRegimeYearSet.add(Math.floor(m / 12));
+      }
+    }
+    return badRegimeYearSet.size;
+  }
+
   global.FireBorderline = {
-    findBorderlineCases, calculateStockAverageAnnualRates, calculateFxAverageAnnualRates, getLifeCostAtYear
+    findBorderlineCases, calculateStockAverageAnnualRates, calculateFxAverageAnnualRates, getLifeCostAtYear,
+    calculateCrisisBufferRatio, countBadRegimeYears, countCrisisMonths
   };
 })(typeof window !== 'undefined' ? window : globalThis);

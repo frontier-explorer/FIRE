@@ -1291,6 +1291,12 @@
       // ---- バッファ補充処理 ----
       cashBufferTarget = currentMonthlyLifeCost * 12.0 * cbConfig.cashBufferYears;
 
+      // その月の実効バッファモード（NORMAL/REFILL/CRISIS）。cashBufferModeはNORMAL/CRISISの
+      // 2値しか持たないステートマシンだが、NORMALのうちバッファ残高が目標未満の月は
+      // 「補充中（REFILL）」として毎月データテーブル・ボーダーライン比較で区別できるよう、
+      // ループの外（下のhistory.push）からも参照できる変数に記録しておく
+      let effectiveModeThisMonth = cashBufferMode;
+
       if (cbConfig.useJgbBuffer) {
         if (simCurrentMonth === 1 || simCurrentMonth === 7) {
           let jgbCouponGross = 0.0;
@@ -1311,16 +1317,16 @@
         const jgbStartYM = cbConfig.jgbStartYearMonth || '';
         const isAfterJgbStart = jgbStartYM === '' || currentYM >= jgbStartYM;
 
-        const effectiveMode = (cashBufferMode === 'NORMAL' && jgbTotalValue < cashBufferTarget) ? 'REFILL' : cashBufferMode;
+        effectiveModeThisMonth = (cashBufferMode === 'NORMAL' && jgbTotalValue < cashBufferTarget) ? 'REFILL' : cashBufferMode;
 
         let shouldRefill;
         if (!isAfterJgbStart) shouldRefill = false;
-        else if (effectiveMode !== 'CRISIS') shouldRefill = true;
+        else if (effectiveModeThisMonth !== 'CRISIS') shouldRefill = true;
         else if (isFirstPurchase) shouldRefill = true;
         else shouldRefill = false;
 
         if (shouldRefill && jgbTotalValue < cashBufferTarget - 9999.0) {
-          const isRefill = effectiveMode === 'REFILL';
+          const isRefill = effectiveModeThisMonth === 'REFILL';
           const refill = refillJgbBuffer({
             cashBufferTarget, currentJgbValue: jgbTotalValue, currentStocks, taxRate, monthIndex,
             jgbCouponRate: cbConfig.jgbCouponRate, currentYear: simCurrentYear, currentMonth: simCurrentMonth,
@@ -1333,8 +1339,8 @@
           taxPayment += refill.saleRes.tax;
         }
       } else {
-        const effectiveMode = (cashBufferMode === 'NORMAL' && currentCash < cashBufferTarget) ? 'REFILL' : cashBufferMode;
-        if (effectiveMode === 'REFILL') {
+        effectiveModeThisMonth = (cashBufferMode === 'NORMAL' && currentCash < cashBufferTarget) ? 'REFILL' : cashBufferMode;
+        if (effectiveModeThisMonth === 'REFILL') {
           const refillResult = handleCashBufferRefill(cashBufferTarget, currentCash, currentStocks, taxRate, monthIndex,
             simCurrentTotalMonths, idecoReceiveTotalMonths);
           currentCash += refillResult.cash;
@@ -1444,7 +1450,15 @@
           jgbCouponThisMonth, idecoIncomeThisMonth, jgbPurchaseThisMonth,
           bondStatuses: recBondStatuses,
           // その月時点の月次生活費（大きな出費・インフレ適用後）。年間生活費の資産比率グラフ等で使用する
-          monthlyLifeCost: currentMonthlyLifeCost
+          monthlyLifeCost: currentMonthlyLifeCost,
+          // マクロ経済レジーム（NORMAL/OVERHEAT/TIGHTENING/STAGFLATION/GOLDILOCKS）。
+          // インフレモデルが無効な場合はcurrentRegimeが常に'NORMAL'のままなので、
+          // 表示側でインフレモデル有効フラグを見て「-」表示に切り替える
+          regime: currentRegime,
+          // 現金バッファのステートマシン状態（NORMAL/CRISIS）
+          cashBufferMode,
+          // その月の実効バッファモード（NORMAL/REFILL/CRISIS）。バッファ補充中かどうかを区別する
+          effectiveMode: effectiveModeThisMonth
         });
       }
     }

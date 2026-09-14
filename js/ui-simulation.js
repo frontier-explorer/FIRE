@@ -51,6 +51,10 @@
   // 他パネルから「この試行番号の詳細を見せる」という操作を行うために保持しておく
   let trialListPanelRefs = null;
 
+  // インフレモデル（マクロ経済レジーム）の有効フラグ。毎月データテーブルのレジーム列表示
+  // 判定に使う。renderResults()で最新のappDataから毎回更新される
+  let currentInflationModelEnabled = false;
+
   /**
    * 試行番号を指定して選択状態にし、試行一覧・詳細エリアを更新する。
    * 試行一覧の左側の行を選択したときと全く同じ描画処理を呼び出す（＝同じ動きにする）。
@@ -177,6 +181,8 @@
    */
   function renderResults(container, appData, results) {
     container.innerHTML = '';
+    // 毎月データテーブルのレジーム列表示判定用（renderTrialMonthlyTableFullが参照する）
+    currentInflationModelEnabled = appData.inflationModelConfig.enabled;
     const filteredResults = FireEngine.filterOutLongTermNegativeReturnAnomalies(results, anomalyExcludeYears);
     const summary = FireEngine.calculateSummary(filteredResults, appData.config.failureDetailLimit);
 
@@ -186,7 +192,7 @@
     container.appendChild(renderBorderlineComparisonPanel(appData, results));
     container.appendChild(renderLifeCostTablePanel(results));
     container.appendChild(renderFanChartPanel(results));
-    container.appendChild(renderCsvExportPanel(results, appData.stocks));
+    container.appendChild(renderCsvExportPanel(results, appData.stocks, appData.config.period));
     container.appendChild(renderTrialListPanel(filteredResults, appData.stocks));
   }
 
@@ -278,7 +284,7 @@
    * ===============================================================
    * 「成功・失敗のボーダーライン比較」パネル
    * ===============================================================
-   * 指定した年数の時点で、失敗ケースの中で最も資産が残っていたケース（ギリギリ失敗）と、
+   * 指定した年数の時点で、失敗ケースの中で最も資産が少なかったケース（ギリギリ失敗）と、
    * 成功ケースの中で最終資産が最も少なかったケース（ギリギリ成功）を抽出し、開始時点から
    * その年数までの銘柄別・為替ペア別の平均年率（累積CAGR）を対比表示する。
    * 年数コンボボックスの変更時は、この表部分だけを再描画する（サマリー等は再計算しない）。
@@ -310,7 +316,7 @@
       createElement('h2', { text: '成功・失敗のボーダーライン比較' }),
       createElement('p', {
         class: 'desc',
-        text: '指定した年数の時点で、失敗ケースの中で最も資産が残っていたケース（ギリギリ失敗）と、' +
+        text: '指定した年数の時点で、失敗ケースの中で最も資産が少なかったケース（ギリギリ失敗）と、' +
           '成功ケースの中で最終資産が最も少なかったケース（ギリギリ成功）を抽出し、開始時点から' +
           'その年数までの銘柄別・為替ペア別の平均年率（累積CAGR）と、その時点の月次生活費（インフレ' +
           '適用後）を比較します。両者の市場推移・生活費の違いから、FIRE成否のボーダーラインとなる' +
@@ -359,6 +365,32 @@
       createElement('td', { text: '月次生活費（' + yearN + '年目時点）' }),
       createElement('td', { text: failureLifeCost !== null ? formatYen(failureLifeCost) : '-' }),
       createElement('td', { text: successLifeCost !== null ? formatYen(successLifeCost) : '-' })
+    ]));
+
+    // バッファCRISIS滞在割合・悪性レジーム遭遇回数は詳細データ（history）にのみ記録されている
+    // regime/effectiveModeを使って計算するため、詳細を保持していない試行（先頭以外の
+    // 成功ケースや、失敗詳細保存件数の上限を超えた失敗ケース）ではnullになる。
+    // その場合は「データ制限上限で、詳細情報なしケースになります。」と表示する
+    // 成功ケースは、先頭の試行#1が偶然「ギリギリ成功ケース」に選ばれた場合を除き、
+    // 詳細データ（history）を保持していない（＝そもそも記録していない）のが通常のため、
+    // 「データ制限上限で、詳細情報なしケースになります。」という文言は失敗ケース側にのみ表示する
+    // （失敗ケースは「失敗詳細保存上限」を超えたために保持していない、という意味を持つため）。
+    // 成功ケース側は単に「-」と表示する。
+    const NO_DETAIL_TEXT = 'データ制限上限で、詳細情報なしケースになります。';
+    const failureCrisisRatio = failureCase ? FireBorderline.calculateCrisisBufferRatio(failureCase, yearN) : null;
+    const successCrisisRatio = successCase ? FireBorderline.calculateCrisisBufferRatio(successCase, yearN) : null;
+    tbody.appendChild(createElement('tr', {}, [
+      createElement('td', { text: 'バッファCRISIS滞在割合（' + yearN + '年目まで）' }),
+      createElement('td', { text: (failureCase && failureCrisisRatio === null) ? NO_DETAIL_TEXT : (failureCrisisRatio !== null ? formatPercent(failureCrisisRatio) : '-') }),
+      createElement('td', { text: successCrisisRatio !== null ? formatPercent(successCrisisRatio) : '-' })
+    ]));
+
+    const failureBadRegimeYears = failureCase ? FireBorderline.countBadRegimeYears(failureCase, yearN) : null;
+    const successBadRegimeYears = successCase ? FireBorderline.countBadRegimeYears(successCase, yearN) : null;
+    tbody.appendChild(createElement('tr', {}, [
+      createElement('td', { text: '悪性レジーム（引き締め・スタグフレーション）遭遇年数（' + yearN + '年目まで）' }),
+      createElement('td', { text: (failureCase && failureBadRegimeYears === null) ? NO_DETAIL_TEXT : (failureBadRegimeYears !== null ? failureBadRegimeYears + '年' : '-') }),
+      createElement('td', { text: successBadRegimeYears !== null ? successBadRegimeYears + '年' : '-' })
     ]));
 
     /** 銘柄名／通貨ペア名をラベルとして、失敗側・成功側の値を1行分作成する */
@@ -512,7 +544,7 @@
   }
 
   /** CSV出力パネルを描画する */
-  function renderCsvExportPanel(results, stocks) {
+  function renderCsvExportPanel(results, stocks, simulationPeriodYears) {
     const panel = createElement('div', { class: 'panel' }, [
       createElement('h2', { text: 'CSV出力' }),
       createElement('p', { class: 'desc', text: '月次の詳細データ（銘柄別内訳・為替レート等）をCSVファイルとして書き出します。詳細データは試行#1と、失敗試行の先頭（設定した保存上限件数）のみ保持されています。' })
@@ -532,6 +564,35 @@
       }
     });
     panel.appendChild(createElement('div', { class: 'row-actions' }, [btnFailed, btnFirst]));
+
+    // 分岐点分析用サマリーCSV（全試行・1試行=1行）。N年目は5年目をデフォルトとし、
+    // シミュレーション期間を超えないように上限をsimulationPeriodYearsに合わせる
+    const maxYear = simulationPeriodYears;
+    const defaultYear = Math.min(5, maxYear);
+    const breakpointYearInput = createElement('input', {
+      type: 'number', class: 'form-input breakpoint-year-input',
+      value: String(defaultYear), min: '1', max: String(maxYear), style: 'width:5em;'
+    });
+    const btnBreakpoint = createElement('button', {
+      class: 'btn', text: '分岐点分析用サマリーCSV出力',
+      onclick: () => {
+        let yearN = parseInt(breakpointYearInput.value, 10);
+        if (!Number.isInteger(yearN) || yearN < 1) yearN = 1;
+        if (yearN > maxYear) yearN = maxYear;
+        const r = FireCsv.exportBreakpointAnalysis(results, yearN);
+        showToast(r.success ? (r.rowCount + '行を出力しました') : r.message, 4000);
+      }
+    });
+    panel.appendChild(createElement('div', { class: 'row-actions breakpoint-csv-row' }, [
+      createElement('span', { text: 'N年目:' }), breakpointYearInput, btnBreakpoint
+    ]));
+    panel.appendChild(createElement('p', {
+      class: 'desc',
+      text: '全試行（成功・失敗問わず）を1試行=1行で出力し、指定したN年目時点の累積CAGR（銘柄別・為替ペア別）・' +
+        '月次生活費・バッファCRISIS滞在月数・悪性レジーム発生年数をまとめます。表計算ソフトでの散布図作成など、' +
+        '試行横断の統計分析に利用できます。CRISIS滞在月数・悪性レジーム発生年数は、詳細データを保持していない試行' +
+        '（先頭以外の成功ケースや、失敗詳細保存上限を超えた失敗ケース）では空欄になります。'
+    }));
     return panel;
   }
 
@@ -983,9 +1044,14 @@
    * 各行はクリック可能にし、クリックするとその月の各口座・銘柄の内訳を別ウィンドウで表示する。
    */
   function renderTrialMonthlyTableFull(container, trial, stocks) {
+    // インフレモデルが無効な場合、regimeは常にNORMAL固定なので意味を持たない → 「-」表示にする
+    const inflationModelEnabled = currentInflationModelEnabled;
     const table = createElement('table', { class: 'data-table' });
     table.appendChild(createElement('thead', {}, [
-      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '収入', '出費', '税金', 'isFailure'].map((h) => createElement('th', { text: h })))
+      createElement('tr', {}, [
+        '年月', '総資産', '現金', '投資資産', '収入', '出費', '税金', 'isFailure',
+        'マクロ経済レジーム', 'バッファ状態', '国債バッファ残高'
+      ].map((h) => createElement('th', { text: h })))
     ]));
     const tbody = createElement('tbody');
     trial.history.forEach((record) => {
@@ -1001,11 +1067,32 @@
         createElement('td', { text: formatYen(record.income) }),
         createElement('td', { text: formatYen(record.expense) }),
         createElement('td', { text: formatYen(record.tax) }),
-        createElement('td', { text: record.isFailure ? 'TRUE' : 'FALSE' })
+        createElement('td', { text: record.isFailure ? 'TRUE' : 'FALSE' }),
+        createElement('td', { text: inflationModelEnabled ? formatRegimeLabel(record.regime) : '-' }),
+        createElement('td', { text: formatBufferModeLabel(record.effectiveMode) }),
+        createElement('td', { text: formatYen(record.jgbBufferValue) })
       ]));
     });
     table.appendChild(tbody);
     container.appendChild(createElement('div', { class: 'table-scroll monthly-table-scroll' }, [table]));
+  }
+
+  /** マクロ経済レジームのコード値を日本語ラベルに変換する（毎月データテーブル表示用） */
+  function formatRegimeLabel(regime) {
+    const labels = {
+      NORMAL: '通常(NORMAL)',
+      OVERHEAT: '過熱(OVERHEAT)',
+      TIGHTENING: '引き締め(TIGHTENING)',
+      STAGFLATION: 'スタグフレーション(STAGFLATION)',
+      GOLDILOCKS: '好況(GOLDILOCKS)'
+    };
+    return labels[regime] || (regime || '-');
+  }
+
+  /** 現金バッファの実効モードを日本語ラベルに変換する（毎月データテーブル表示用） */
+  function formatBufferModeLabel(effectiveMode) {
+    const labels = { NORMAL: '通常(NORMAL)', REFILL: '補充中(REFILL)', CRISIS: '危機(CRISIS)' };
+    return labels[effectiveMode] || (effectiveMode || '-');
   }
 
   // =====================================================
