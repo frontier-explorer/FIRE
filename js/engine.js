@@ -410,6 +410,150 @@
     return simCurrentTotalMonths < idecoReceiveTotalMonths;
   }
 
+  // =====================================================
+  // iDeCo一時金の受給処理（通常受給／緊急取り崩し共通）
+  // =====================================================
+
+  // 緊急取り崩し（tryEmergencyIdecoLiquidation）のデバッグログ出力フラグ。
+  // 全試行×全月のループから呼ばれるため、出力件数の上限も設けて大量出力を防ぐ。
+  const DEBUG_IDECO_RESCUE = true;
+  const DEBUG_IDECO_RESCUE_LOG_LIMIT = 50;
+  let debugIdecoRescueLogCount = 0;
+
+  /** iDeCo緊急取り崩しのデバッグログを出力する（出力件数の上限つき） */
+  function debugLogIdecoRescue(message, detail) {
+    if (!DEBUG_IDECO_RESCUE) return;
+    if (debugIdecoRescueLogCount >= DEBUG_IDECO_RESCUE_LOG_LIMIT) return;
+    debugIdecoRescueLogCount++;
+    console.log('[iDeCo緊急取り崩し] ' + message, detail);
+  }
+
+  /**
+   * iDeCo口座の資産を一時金として一括受給（現金化）する共通処理。
+   * 「予定受給年月に達したときの通常受給」と「他に売れる資産が尽きたときの
+   * 緊急取り崩し」の両方から呼び出す。受給後、iDeCo銘柄の保有口数は0になる。
+   *
+   * @param currentStocks              保有銘柄（呼び出し元の配列を直接書き換える）
+   * @param appData                    全設定
+   * @param payoutYearMonth            実際に受給する年月（"yyyy-MM"）。退職所得控除の加入年数計算に使う
+   * @param simCurrentTotalMonths      現在の絶対年月（西暦年×12＋月）
+   * @param idecoSeveranceTotalMonths  退職金の受取年月（西暦年×12＋月）。未設定ならnull
+   * @param severancePaidOut           退職金を既に受け取り済みかどうか
+   * @returns {{gross:number, netAmount:number, totalTax:number}} 受給額（grossが0なら受給対象なし）
+   */
+  function payOutIdecoLumpSum(currentStocks, appData, payoutYearMonth,
+    simCurrentTotalMonths, idecoSeveranceTotalMonths, severancePaidOut) {
+    const idc = appData.idecoConfig;
+    const grossValue = currentStocks
+      .filter(isIdecoStock)
+      .reduce((s, st) => s + (st.currentValuePerUnit / st.tani) * st.kuchisu, 0.0);
+    if (grossValue <= 0.0) return { gross: 0.0, netAmount: 0.0, totalTax: 0.0 };
+
+    const contributionYears = calculateIdecoContributionYears(appData, idc.startYearMonth, payoutYearMonth);
+
+    // 退職金を先に受け取っている場合は、退職所得控除の重複を避けるため合算方式で課税する。
+    // まだ受け取っていない場合はiDeCo単独で満額控除する（gapYearsを十分大きい値にして表現）。
+    let effectiveSeveranceAmount, gapYears;
+    if (severancePaidOut && idecoSeveranceTotalMonths !== null) {
+      effectiveSeveranceAmount = idc.severanceAmount;
+      gapYears = coerceAtLeast(Math.floor((simCurrentTotalMonths - idecoSeveranceTotalMonths) / 12), 0);
+    } else {
+      effectiveSeveranceAmount = 0;
+      gapYears = Number.MAX_SAFE_INTEGER;
+    }
+
+    const taxResult = FireRetirementTax.calculateIdecoLumpSumTax(
+      Math.round(grossValue), contributionYears, effectiveSeveranceAmount, idc.companyServiceYears, gapYears);
+
+    currentStocks.forEach((st) => { if (isIdecoStock(st)) st.kuchisu = 0; });
+
+    return { gross: grossValue, netAmount: taxResult.netAmount, totalTax: taxResult.totalTax };
+  }
+
+  /**
+   * 他に売却できる資産が尽きて破綻しかけたときに、iDeCo資産を緊急的に全額一括取り崩す。
+   *
+   * ユーザーが設定した「予定受給年月」より前であっても、iDeCo制度上の受給可能年齢
+   * （生年月日と拠出開始年月から決まる60〜65歳。通算加入者等期間による10年ルール）に
+   * 達していれば法律上は受給できる。生活費が払えず破綻するくらいならiDeCoを取り崩すのが
+   * 実態に即しているため、破綻を確定させる前にこの処理を試みる。
+   * 逆に受給可能年齢前に資産が尽きた場合は、制度上引き出せないためそのまま破綻となる。
+   *
+   * @param ctx.appData                   全設定
+   * @param ctx.currentStocks             保有銘柄
+   * @param ctx.idecoAlreadyPaidOut       iDeCoを既に受給済みかどうか
+   * @param ctx.idecoEligibleTotalMonths  受給可能になる最も早い年月（西暦年×12＋月）。判定不能ならnull
+   * @param ctx.simCurrentTotalMonths     現在の絶対年月（西暦年×12＋月）
+   * @param ctx.simCurrentYear            現在の西暦年
+   * @param ctx.simCurrentMonth           現在の月（1〜12）
+   * @param ctx.idecoSeveranceTotalMonths 退職金の受取年月（西暦年×12＋月）
+   * @param ctx.severancePaidOut          退職金を既に受け取り済みかどうか
+   * @param ctx.trialId                   試行番号（デバッグログ用）
+   * @returns {{paid:boolean, netAmount:number, totalTax:number}}
+   */
+  function tryEmergencyIdecoLiquidation(ctx) {
+    const notPaid = { paid: false, netAmount: 0.0, totalTax: 0.0 };
+    if (!ctx.appData.idecoConfig.enabled) return notPaid;
+    if (ctx.idecoAlreadyPaidOut) return notPaid;
+    if (ctx.idecoEligibleTotalMonths === null) return notPaid;
+
+    if (ctx.simCurrentTotalMonths < ctx.idecoEligibleTotalMonths) {
+      debugLogIdecoRescue('受給可能年齢前のため取り崩せず破綻します', {
+        trialId: ctx.trialId, 現在年月: ctx.simCurrentYear + '-' + ctx.simCurrentMonth,
+        受給可能年月: Math.floor((ctx.idecoEligibleTotalMonths - 1) / 12) + '-' + (((ctx.idecoEligibleTotalMonths - 1) % 12) + 1)
+      });
+      return notPaid;
+    }
+
+    const payoutYearMonth = String(ctx.simCurrentYear).padStart(4, '0') + '-' + String(ctx.simCurrentMonth).padStart(2, '0');
+    const result = payOutIdecoLumpSum(ctx.currentStocks, ctx.appData, payoutYearMonth,
+      ctx.simCurrentTotalMonths, ctx.idecoSeveranceTotalMonths, ctx.severancePaidOut);
+    if (result.gross <= 0.0) return notPaid;
+
+    debugLogIdecoRescue('資産が尽きたためiDeCoを繰り上げ一括受給しました', {
+      trialId: ctx.trialId, 年月: payoutYearMonth,
+      受給額税引前: Math.round(result.gross), 税額: result.totalTax, 手取り: result.netAmount
+    });
+    return { paid: true, netAmount: result.netAmount, totalTax: result.totalTax };
+  }
+
+  /**
+   * handleAssetSale（資産売却）を実行し、資産不足で失敗した場合は
+   * iDeCoの緊急取り崩し（tryEmergencyIdecoLiquidation）を挟んでもう一度売却を試みる。
+   *
+   * @returns {{cash:number, tax:number, failed:boolean, idecoNetAmount:number, idecoPaidOut:boolean}}
+   */
+  function handleAssetSaleWithIdecoRescue(requiredExpense, currentCash, taxRate, monthIndex, idecoCtx) {
+    const firstTry = handleAssetSale(requiredExpense, currentCash, idecoCtx.currentStocks, taxRate, monthIndex,
+      idecoCtx.simCurrentTotalMonths, idecoCtx.idecoReceiveTotalMonths);
+    if (!firstTry.failed) {
+      return { cash: firstTry.cash, tax: firstTry.tax, failed: false, idecoNetAmount: 0.0, idecoPaidOut: false };
+    }
+
+    const rescue = tryEmergencyIdecoLiquidation(idecoCtx);
+    if (!rescue.paid) {
+      return { cash: firstTry.cash, tax: firstTry.tax, failed: true, idecoNetAmount: 0.0, idecoPaidOut: false };
+    }
+
+    // iDeCoの受給額だけで不足額を賄えた場合は、これ以上の資産売却は不要
+    const cashAfterRescue = currentCash + rescue.netAmount;
+    if (cashAfterRescue >= requiredExpense) {
+      return {
+        cash: Math.floor(cashAfterRescue - requiredExpense), tax: firstTry.tax + rescue.totalTax,
+        failed: false, idecoNetAmount: rescue.netAmount, idecoPaidOut: true
+      };
+    }
+
+    // iDeCoを現金化した状態で、同じ不足額に対する売却処理をやり直す
+    // （handleAssetSaleは資産不足と判定した場合は1株も売らずに戻るため、単純な再実行で問題ない）
+    const retry = handleAssetSale(requiredExpense, cashAfterRescue, idecoCtx.currentStocks,
+      taxRate, monthIndex, idecoCtx.simCurrentTotalMonths, idecoCtx.idecoReceiveTotalMonths);
+    return {
+      cash: retry.cash, tax: firstTry.tax + retry.tax + rescue.totalTax, failed: retry.failed,
+      idecoNetAmount: rescue.netAmount, idecoPaidOut: true
+    };
+  }
+
   /** 売却優先順位に従って銘柄リストをソートして返す（同一優先度内は登録順を維持） */
   function sortedBySaleOrder(stocks, monthIndex) {
     return stocks
@@ -1082,6 +1226,11 @@
     let idecoPaidOut = false;
     const idecoReceiveTotalMonths = yearMonthToTotalMonths(appData.idecoConfig.receiveYearMonth);
     const idecoSeveranceTotalMonths = yearMonthToTotalMonths(appData.idecoConfig.severanceYearMonth);
+    // iDeCo制度上、法律的に受給可能となる最も早い年月（生年月日と拠出開始年月から算出。
+    // 通算加入者等期間による10年ルールで60〜65歳の間で決まる）。
+    // 他に売れる資産が尽きたときの「繰り上げ緊急取り崩し」の可否判定に使う。
+    const idecoEligibleTotalMonths = yearMonthToTotalMonths(
+      FireRetirementTax.calculateEligibleReceiveYearMonth(config.birthDate, appData.idecoConfig.startYearMonth));
 
     const currentStocks = stocks.map((s) => ({
       meigara: s.meigara, kuchisu: s.kuchisu, tani: s.tani,
@@ -1188,32 +1337,15 @@
           severancePaidOut = true;
         }
 
+        // 予定受給年月に達したときの通常受給。
+        // （資産が尽きたことによる繰り上げ緊急取り崩しで既に受給済みの場合はスキップされる）
         if (!idecoPaidOut && idecoReceiveTotalMonths !== null &&
           simCurrentTotalMonths >= idecoReceiveTotalMonths) {
-          const idecoGrossValue = currentStocks
-            .filter(isIdecoStock)
-            .reduce((s, st) => s + (st.currentValuePerUnit / st.tani) * st.kuchisu, 0.0);
-
-          if (idecoGrossValue > 0.0) {
-            const idecoContributionYears = calculateIdecoContributionYears(appData, idc.startYearMonth, idc.receiveYearMonth);
-
-            let effectiveSeveranceAmount, gapYears;
-            if (severancePaidOut && idecoSeveranceTotalMonths !== null) {
-              effectiveSeveranceAmount = idc.severanceAmount;
-              gapYears = coerceAtLeast(Math.floor((simCurrentTotalMonths - idecoSeveranceTotalMonths) / 12), 0);
-            } else {
-              effectiveSeveranceAmount = 0;
-              gapYears = Number.MAX_SAFE_INTEGER;
-            }
-
-            const idecoTaxResult = FireRetirementTax.calculateIdecoLumpSumTax(
-              Math.round(idecoGrossValue), idecoContributionYears, effectiveSeveranceAmount, idc.companyServiceYears, gapYears);
-
-            currentCash += idecoTaxResult.netAmount;
-            idecoIncomeThisMonth += idecoTaxResult.netAmount;
-            taxPayment += idecoTaxResult.totalTax;
-            currentStocks.forEach((st) => { if (isIdecoStock(st)) st.kuchisu = 0; });
-          }
+          const idecoResult = payOutIdecoLumpSum(currentStocks, appData, idc.receiveYearMonth,
+            simCurrentTotalMonths, idecoSeveranceTotalMonths, severancePaidOut);
+          currentCash += idecoResult.netAmount;
+          idecoIncomeThisMonth += idecoResult.netAmount;
+          taxPayment += idecoResult.totalTax;
           idecoPaidOut = true;
         }
       }
@@ -1248,13 +1380,32 @@
 
       cashBufferMode = updateCashBufferMode(cashBufferMode, drawdownPct, cbConfig.crashThresholdPct, cbConfig.recoveryThresholdPct);
 
+      // 資産売却時に、他に売れる資産が尽きた場合のiDeCo緊急取り崩し判定へ渡す情報。
+      // handleAssetSaleWithIdecoRescue が iDeCoを受給したときは
+      // idecoPaidOut / idecoIncomeThisMonth をここで更新する。
+      const buildIdecoRescueContext = () => ({
+        appData, currentStocks, trialId,
+        idecoAlreadyPaidOut: idecoPaidOut, idecoEligibleTotalMonths,
+        simCurrentTotalMonths, simCurrentYear, simCurrentMonth,
+        idecoReceiveTotalMonths, idecoSeveranceTotalMonths, severancePaidOut
+      });
+
+      /** 売却結果を受け取り、iDeCoを緊急受給していた場合の状態更新と破綻判定をまとめて行う */
+      const applySaleResult = (saleRes) => {
+        taxPayment += saleRes.tax;
+        if (saleRes.idecoPaidOut) {
+          idecoPaidOut = true;
+          idecoIncomeThisMonth += saleRes.idecoNetAmount;
+        }
+        if (saleRes.failed && !fireFailure) { fireFailure = true; failureMonth = monthIndex; }
+      };
+
       if (incExp.requiredAssetSale > 0.0) {
         if (cashBufferMode === 'NORMAL' || cashBufferMode === 'REFILL') {
-          const saleRes = handleAssetSale(incExp.requiredAssetSale, currentCash, currentStocks, taxRate, monthIndex,
-            simCurrentTotalMonths, idecoReceiveTotalMonths);
+          const saleRes = handleAssetSaleWithIdecoRescue(incExp.requiredAssetSale, currentCash, taxRate, monthIndex,
+            buildIdecoRescueContext());
           currentCash = saleRes.cash;
-          taxPayment += saleRes.tax;
-          if (saleRes.failed && !fireFailure) { fireFailure = true; failureMonth = monthIndex; }
+          applySaleResult(saleRes);
         } else {
           // CRISIS
           const cashNeeded = incExp.requiredAssetSale;
@@ -1266,11 +1417,10 @@
               currentCash += (-stillNeeded);
             } else {
               currentCash += redeemResult.raised;
-              const saleRes = handleAssetSale(stillNeeded, 0.0, currentStocks, taxRate, monthIndex,
-                simCurrentTotalMonths, idecoReceiveTotalMonths);
+              const saleRes = handleAssetSaleWithIdecoRescue(stillNeeded, 0.0, taxRate, monthIndex,
+                buildIdecoRescueContext());
               currentCash += saleRes.cash;
-              taxPayment += saleRes.tax;
-              if (saleRes.failed && !fireFailure) { fireFailure = true; failureMonth = monthIndex; }
+              applySaleResult(saleRes);
             }
           } else {
             if (currentCash >= cashNeeded) {
@@ -1278,11 +1428,10 @@
             } else {
               const remainingAfterCash = cashNeeded - currentCash;
               currentCash = 0.0;
-              const saleRes = handleAssetSale(remainingAfterCash, 0.0, currentStocks, taxRate, monthIndex,
-                simCurrentTotalMonths, idecoReceiveTotalMonths);
+              const saleRes = handleAssetSaleWithIdecoRescue(remainingAfterCash, 0.0, taxRate, monthIndex,
+                buildIdecoRescueContext());
               currentCash = saleRes.cash;
-              taxPayment += saleRes.tax;
-              if (saleRes.failed && !fireFailure) { fireFailure = true; failureMonth = monthIndex; }
+              applySaleResult(saleRes);
             }
           }
         }
@@ -1401,9 +1550,22 @@
       const totalAsset = endAssets + currentCash + jgbBufferValueThisMonth;
       if (totalAsset < 0.0 && !fireFailure) { fireFailure = true; failureMonth = monthIndex; }
 
-      const recTotalAsset = (fireFailure && failureMonth <= monthIndex) ? 0.0 : totalAsset;
-      const recCash = (fireFailure && failureMonth < monthIndex) ? 0.0 : currentCash;
-      const recInvestmentAssets = (fireFailure && failureMonth < monthIndex) ? 0.0 : endAssets;
+      // ---- 破綻確定時の資産一括ゼロ化 ----
+      // 破綻した月以降は、現金・投資資産・国債バッファのいずれも0にリセットする。
+      // 破綻しているのに国債バッファ残高だけが残り続けたり、iDeCoの受給で増えたりして
+      // 表示上の混乱を招くのを防ぐため。
+      // なおiDeCoは、受給可能年齢に達していれば破綻確定前に緊急取り崩しを試みているので、
+      // ここで失われるのは「受給可能年齢前で法律上まだ引き出せなかった」分のみとなる。
+      if (fireFailure) {
+        currentCash = 0.0;
+        currentStocks.forEach((st) => { st.kuchisu = 0; });
+        jgbLots = [];
+      }
+
+      const recTotalAsset = fireFailure ? 0.0 : totalAsset;
+      const recCash = fireFailure ? 0.0 : currentCash;
+      const recInvestmentAssets = fireFailure ? 0.0 : endAssets;
+      const recJgbBufferValue = fireFailure ? 0.0 : jgbBufferValueThisMonth;
 
       // monthlyLifeCost：この月時点の月次生活費（インフレ／デフレ適用後）。
       // 「月の生活費」テーブル（生活費の分布・破綻件数の集計）で全試行分を参照するために保持する
@@ -1417,7 +1579,7 @@
       });
 
       if (history) {
-        const recStockDetails = (fireFailure && failureMonth < monthIndex)
+        const recStockDetails = fireFailure
           ? returnRes.stockDetails.map((d) => Object.assign({}, d, { value: 0.0, kuchisu: 0 }))
           : returnRes.stockDetails;
 
@@ -1443,10 +1605,10 @@
           income: incExp.monthlyIncome + divResult.gain + jgbCouponThisMonth,
           gain: divResult.gain, tax: taxPayment + divResult.gainTax, gainTax: divResult.gainTax,
           cash: recCash, tuika: tuikaResult.totalInvestment,
-          endOfPeriodAssets: (fireFailure && failureMonth < monthIndex) ? 0.0 : endAssets,
+          endOfPeriodAssets: recInvestmentAssets,
           totalAsset: recTotalAsset, stockDetails: recStockDetails, fxRates: Object.assign({}, currentExchangeRates),
           isFailure: fireFailure,
-          jgbBufferValue: jgbBufferValueThisMonth, jgbBufferLotCount: jgbLots.reduce((s, lo) => s + lo.quantity, 0),
+          jgbBufferValue: recJgbBufferValue, jgbBufferLotCount: jgbLots.reduce((s, lo) => s + lo.quantity, 0),
           jgbCouponThisMonth, idecoIncomeThisMonth, jgbPurchaseThisMonth,
           bondStatuses: recBondStatuses,
           // その月時点の月次生活費（大きな出費・インフレ適用後）。年間生活費の資産比率グラフ等で使用する

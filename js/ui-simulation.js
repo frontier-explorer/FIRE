@@ -176,8 +176,10 @@
   /**
    * 実行結果全体（異常値除外フィルタ・サマリー・チャート・試行詳細）を描画する。
    * 「N年以上運用した場合の平均年率マイナスを異常値として除外」フィルタは、
-   * サマリーと試行一覧/詳細のみに適用し、ファンチャート・生活費テーブル・
-   * CSV出力には全試行（results）をそのまま使う。
+   * サマリー・試行一覧/詳細に加えて、「月の生活費」テーブル（破綻件数の集計）と
+   * 資産推移（パーセンタイル）ファンチャートにも適用する（除外したケースが
+   * 破綻件数やパーセンタイル推移に乗ってこないようにするため）。
+   * CSV出力とボーダーライン比較には、従来どおり全試行（results）をそのまま使う。
    */
   function renderResults(container, appData, results) {
     container.innerHTML = '';
@@ -190,8 +192,8 @@
     container.appendChild(renderSummaryCards(summary));
     container.appendChild(renderAssessmentBox(summary));
     container.appendChild(renderBorderlineComparisonPanel(appData, results));
-    container.appendChild(renderLifeCostTablePanel(results));
-    container.appendChild(renderFanChartPanel(results));
+    container.appendChild(renderLifeCostTablePanel(filteredResults));
+    container.appendChild(renderFanChartPanel(filteredResults));
     container.appendChild(renderCsvExportPanel(results, appData.stocks, appData.config.period));
     container.appendChild(renderTrialListPanel(filteredResults, appData.stocks));
   }
@@ -235,8 +237,9 @@
         '強まります。モンテカルロシミュレーションでは、こうした歴史的には考えにくい長期平均年率' +
         'マイナス（外れ値）も一定確率で発生します。ここで年数を選ぶと、「保有銘柄」タブで' +
         '「異常値除外の対象」にチェックを入れた銘柄について、開始時点からその年数経過時点までの' +
-        '平均年率がマイナスだったケースを母数から除外して、サマリーと試行一覧・詳細に反映します' +
-        '（ファンチャート・生活費テーブル・CSV出力には影響しません）。'
+        '平均年率がマイナスだったケースを母数から除外して、サマリー・試行一覧／詳細・' +
+        '「月の生活費」テーブル（破綻件数）・資産推移（パーセンタイル）ファンチャートに反映します' +
+        '（CSV出力・ボーダーライン比較には影響しません）。'
     ];
     if (!hasEligibleStock) {
       descLines.push('※「保有銘柄」タブで「異常値除外の対象」にチェックを入れた銘柄が1件もないため、現在は選択できません。');
@@ -1047,11 +1050,21 @@
     // インフレモデルが無効な場合、regimeは常にNORMAL固定なので意味を持たない → 「-」表示にする
     const inflationModelEnabled = currentInflationModelEnabled;
     const table = createElement('table', { class: 'data-table' });
+    // 「マクロ経済レジーム」は列幅を抑えるため、th内で「マクロ経済／レジーム」の2行に折り返す
     table.appendChild(createElement('thead', {}, [
       createElement('tr', {}, [
-        '年月', '総資産', '現金', '投資資産', '収入', '出費', '税金', 'isFailure',
-        'マクロ経済レジーム', 'バッファ状態', '国債バッファ残高'
-      ].map((h) => createElement('th', { text: h })))
+        createElement('th', { text: '年月' }),
+        createElement('th', { text: '総資産' }),
+        createElement('th', { text: '現金' }),
+        createElement('th', { text: '投資資産' }),
+        createElement('th', { text: '収入' }),
+        createElement('th', { text: '出費' }),
+        createElement('th', { text: '税金' }),
+        createElement('th', { text: '破綻' }),
+        buildTwoLineHeaderCell('マクロ経済', 'レジーム'),
+        createElement('th', { text: 'バッファ状態' }),
+        createElement('th', { text: '国債バッファ残高' })
+      ])
     ]));
     const tbody = createElement('tbody');
     trial.history.forEach((record) => {
@@ -1067,7 +1080,7 @@
         createElement('td', { text: formatYen(record.income) }),
         createElement('td', { text: formatYen(record.expense) }),
         createElement('td', { text: formatYen(record.tax) }),
-        createElement('td', { text: record.isFailure ? 'TRUE' : 'FALSE' }),
+        createElement('td', { text: formatFailureMark(record.isFailure) }),
         createElement('td', { text: inflationModelEnabled ? formatRegimeLabel(record.regime) : '-' }),
         createElement('td', { text: formatBufferModeLabel(record.effectiveMode) }),
         createElement('td', { text: formatYen(record.jgbBufferValue) })
@@ -1077,21 +1090,40 @@
     container.appendChild(createElement('div', { class: 'table-scroll monthly-table-scroll' }, [table]));
   }
 
-  /** マクロ経済レジームのコード値を日本語ラベルに変換する（毎月データテーブル表示用） */
+  /** 見出しセル（th）を、指定した2行のテキストで折り返して生成する */
+  function buildTwoLineHeaderCell(firstLine, secondLine) {
+    return createElement('th', {}, [
+      createElement('div', { text: firstLine }),
+      createElement('div', { text: secondLine })
+    ]);
+  }
+
+  /**
+   * 破綻状態を「破綻」列の表示文字に変換する。
+   * 破綻した月以降は「○」、破綻前は空欄にする（TRUE/FALSEの羅列を避けて読みやすくするため）。
+   */
+  function formatFailureMark(isFailure) {
+    return isFailure ? '○' : '';
+  }
+
+  /**
+   * マクロ経済レジームのコード値を日本語ラベルに変換する（毎月データテーブル表示用）。
+   * 英語のコード値は併記しない。スタグフレーションは列幅を抑えるため「スタフレ」と略記する。
+   */
   function formatRegimeLabel(regime) {
     const labels = {
-      NORMAL: '通常(NORMAL)',
-      OVERHEAT: '過熱(OVERHEAT)',
-      TIGHTENING: '引き締め(TIGHTENING)',
-      STAGFLATION: 'スタグフレーション(STAGFLATION)',
-      GOLDILOCKS: '好況(GOLDILOCKS)'
+      NORMAL: '通常',
+      OVERHEAT: '過熱',
+      TIGHTENING: '引き締め',
+      STAGFLATION: 'スタフレ',
+      GOLDILOCKS: '好況'
     };
     return labels[regime] || (regime || '-');
   }
 
-  /** 現金バッファの実効モードを日本語ラベルに変換する（毎月データテーブル表示用） */
+  /** 現金バッファの実効モードを日本語ラベルに変換する（毎月データテーブル表示用。英語コードは併記しない） */
   function formatBufferModeLabel(effectiveMode) {
-    const labels = { NORMAL: '通常(NORMAL)', REFILL: '補充中(REFILL)', CRISIS: '危機(CRISIS)' };
+    const labels = { NORMAL: '通常', REFILL: '補充中', CRISIS: '危機' };
     return labels[effectiveMode] || (effectiveMode || '-');
   }
 
@@ -1277,7 +1309,7 @@
   function renderTrialMonthlyTableLight(container, trial) {
     const table = createElement('table', { class: 'data-table' });
     table.appendChild(createElement('thead', {}, [
-      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', 'isFailure'].map((h) => createElement('th', { text: h })))
+      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', '破綻'].map((h) => createElement('th', { text: h })))
     ]));
     const tbody = createElement('tbody');
     trial.lightHistory.forEach((record, i) => {
@@ -1288,7 +1320,7 @@
         createElement('td', { text: formatYen(record.investmentAssets) }),
         createElement('td', { text: formatYen(record.monthlyLifeCost) }),
         createElement('td', { text: formatYen(record.income) }),
-        createElement('td', { text: record.isFailure ? 'TRUE' : 'FALSE' })
+        createElement('td', { text: formatFailureMark(record.isFailure) })
       ]));
     });
     table.appendChild(tbody);
