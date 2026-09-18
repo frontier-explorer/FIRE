@@ -70,6 +70,8 @@
    *   createEmptyRow : 新規行を生成する関数（() => object）
    *   onChange       : 行データが変化したときに呼ばれる関数（rows => void）
    *   addButtonLabel : 追加ボタンのラベル（省略時「＋行を追加」）
+   *   hideAddButton  : trueなら追加ボタン自体を表示しない
+   *                    （全組み合わせが自動的に過不足なく生成される一覧向け。相関係数タブ等）
    */
   function renderEditableTable(container, config) {
     container.innerHTML = '';
@@ -108,6 +110,12 @@
 
     if (rows.length === 0) {
       container.appendChild(createElement('p', { class: 'help-text', text: '（まだ登録がありません）' }));
+    }
+
+    if (config.hideAddButton) {
+      // ペアが自動的に過不足なく生成される一覧（相関係数タブ等）では、
+      // 手動追加という概念自体が無いため、追加ボタンを表示しない
+      return;
     }
 
     const addBtn = createElement('button', {

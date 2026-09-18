@@ -494,21 +494,29 @@
           '銘柄の組み合わせごとに1件だけで済み、すべての口座の組み合わせに自動的に同じ相関係数が' +
           '適用されます（口座違いによる入力ミス・食い違いを防ぐため）。なお、同一銘柄の異口座間は' +
           '常に相関1.0として自動的に扱われるため、ここで設定する必要はありません。' +
-          '一覧は「銘柄A」が同じ行同士がまとまって並ぶよう、自動的に並び替えられます。'
+          '保有銘柄の組み合わせのうち、まだ設定されていないペアは相関係数0の行として自動的に' +
+          '追加され、保有銘柄を削除した場合はその銘柄を含む行も自動的に削除されます。' +
+          '組み合わせは全て自動的に過不足なく用意されるため、行を手動で追加する必要はありません。' +
+          '一覧は「銘柄A」→「銘柄B」の順で分かりやすいように自動的に並び替えられます。'
       })
     ]);
     const tableContainer = createElement('div');
     panel.appendChild(tableContainer);
     container.appendChild(panel);
 
-    // 「銘柄A」が同じ行同士が連続してまとまるよう、銘柄Aの値で並び替える
-    // （例: AAA/BBBB, CCC/BBBB, AAA/CCC → AAA/BBBB, AAA/CCC, CCC/BBBB の順にする）
+    // 現在の保有銘柄の組み合わせに合わせて、相関係数一覧を整合させる
+    // （①逆順・重複ペアの統合 ②孤立行の削除 ③未設定ペアを相関係数0で自動追加）
+    const baseNames = collectUniqueBaseNames(appData.stocks);
+    appData.soukan = FireState.reconcileSoukanForCurrentStocks(appData.soukan, baseNames);
+
+    // 「銘柄A」→「銘柄B」の順で分かりやすく並ぶよう、日本語として自然な順序で並び替える
     appData.soukan.sort((a, b) => {
-      if (a.aMeigara === b.aMeigara) return 0;
-      return a.aMeigara < b.aMeigara ? -1 : 1;
+      const cmpA = a.aMeigara.localeCompare(b.aMeigara, 'ja');
+      if (cmpA !== 0) return cmpA;
+      return a.bMeigara.localeCompare(b.bMeigara, 'ja');
     });
 
-    const meigaraOptions = collectUniqueBaseNames(appData.stocks).map((name) => ({ value: name, label: name }));
+    const meigaraOptions = baseNames.map((name) => ({ value: name, label: name }));
 
     renderEditableTable(tableContainer, {
       columns: [
@@ -519,12 +527,8 @@
       rows: appData.soukan,
       createEmptyRow: () => ({ aMeigara: '', bMeigara: '', keisu: 0.0 }),
       onChange: () => onChange(),
-      addButtonLabel: '＋ 相関設定を追加',
-      // ペアを組める銘柄が2つ未満の場合は、相関設定という設定自体が成立しないため
-      // 追加ボタンを無効化する（保有銘柄タブで銘柄を2つ以上登録すれば有効になる）
-      disableAddReason: meigaraOptions.length < 2
-        ? '保有銘柄が2つ以上登録されていません。保有証券タブで銘柄を2つ以上登録すると、相関係数を設定できます。'
-        : null
+      // 全組み合わせのペアは自動的に過不足なく生成されるため、手動追加ボタンは不要
+      hideAddButton: true
     });
   }
 

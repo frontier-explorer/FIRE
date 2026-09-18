@@ -336,6 +336,45 @@
   }
 
   /**
+   * 相関係数一覧に、現在の保有銘柄の組み合わせのうち、まだ設定されていない
+   * ペアが無いか調べ、あれば相関係数0の行として自動的に追加する。
+   * 銘柄を新しく登録した際に、既存の全銘柄との組み合わせを手動で追加する
+   * 手間を無くすためのもの（未設定は元々無相関=0として扱われるため、
+   * 追加しても計算結果には影響しない）。
+   */
+  function addMissingSoukanPairs(soukanRows, baseNames) {
+    for (let i = 0; i < baseNames.length; i++) {
+      for (let j = i + 1; j < baseNames.length; j++) {
+        const a = baseNames[i];
+        const b = baseNames[j];
+        const alreadyExists = soukanRows.some((row) =>
+          (row.aMeigara === a && row.bMeigara === b) ||
+          (row.aMeigara === b && row.bMeigara === a)
+        );
+        if (!alreadyExists) {
+          soukanRows.push({ aMeigara: a, bMeigara: b, keisu: 0.0 });
+        }
+      }
+    }
+    return soukanRows;
+  }
+
+  /**
+   * 相関係数一覧を、現在の保有銘柄の組み合わせに合わせて整合させる
+   * （①逆順・重複ペアの統合 → ②孤立行の削除 → ③未設定ペアの自動追加、の順に行う）
+   * コントロール関数。
+   * 相関係数タブの表示・保有銘柄の追加/削除のたびに呼び出すことで、
+   * 保有銘柄の組み合わせと相関係数一覧が常に過不足なく・重複なく一致した状態を保つ。
+   * ペアは全組み合わせが自動的に過不足なく用意されるため、手動での行追加・削除は
+   * 不要（相関係数タブには追加ボタンを表示しない）。
+   */
+  function reconcileSoukanForCurrentStocks(soukanRows, baseNames) {
+    const deduplicated = deduplicateSoukanByBaseNamePair(soukanRows);
+    const withoutOrphans = removeOrphanedSoukanRows(deduplicated, baseNames);
+    return addMissingSoukanPairs(withoutOrphans, baseNames);
+  }
+
+  /**
    * 保有銘柄一覧（Web版内部形式・meigaraキー）から、有効な銘柄フルネーム
    * （口座種別込み）の一覧を作る（重複排除）。追加投資・配当設定の
    * 参照先チェックに使う。
@@ -398,7 +437,7 @@
     const validBaseNames = collectValidBaseNamesFromStocks(appData.stocks || []);
     const validFullNames = collectValidFullMeigaraNames(appData.stocks || []);
     if (Array.isArray(appData.soukan)) {
-      appData.soukan = removeOrphanedSoukanRows(appData.soukan, validBaseNames);
+      appData.soukan = reconcileSoukanForCurrentStocks(appData.soukan, validBaseNames);
     }
     if (Array.isArray(appData.tuika)) {
       appData.tuika = removeOrphanedTuikaRows(appData.tuika, validFullNames);
@@ -621,7 +660,7 @@
     createBlankAppData, createBlankInflationCategories,
     saveAppData, loadAppData, clearAppData, exportAppDataAsFile, importAppDataFromFile,
     normalizeImportedAppData, convertAppDataToAndroidFormat,
-    reconcileCrossReferencesAfterStockChange,
+    reconcileCrossReferencesAfterStockChange, reconcileSoukanForCurrentStocks,
     extractBaseNameForSoukan
   };
 })(typeof window !== 'undefined' ? window : globalThis);
