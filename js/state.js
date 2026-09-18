@@ -145,6 +145,62 @@
     };
   }
 
+  /**
+   * 「データをクリア」ボタン用の空データにおける、生活費カテゴリのテンプレートを生成する。
+   * 金額はすべて0円とし、費目名と、その費目に一般的な物価上昇率の目安だけを
+   * あらかじめ用意しておくことで、ユーザーが金額を入力するだけで済むようにする。
+   */
+  function createBlankInflationCategories() {
+    const defs = [
+      ['住居費', 0.5],
+      ['食費', 3.0],
+      ['水道代', 1.0],
+      ['電気代', 3.0],
+      ['ガス代', 3.0],
+      ['通信費', 0.5],
+      ['被服費', 1.0],
+      ['日用品費', 2.0],
+      ['交通費', 1.5],
+      ['医療費・保険料', 3.0],
+      ['娯楽費', 2.0]
+    ];
+    return defs.map(([name, rate]) => ({ name, monthlyAmount: 0, inflationRate: rate }));
+  }
+
+  /**
+   * 「データをクリア」ボタン用の、完全に空のAppDataを生成する。
+   * createDefaultAppData()（サンプルシナリオ）とは異なり、保有銘柄・追加投資・収入
+   * 等はすべて空にする。ただし生活費のみ、入力しやすいよう費目名とインフレ率の
+   * テンプレート（createBlankInflationCategories）を用意し、金額は0円とする。
+   */
+  function createBlankAppData() {
+    return {
+      config: { period: 30, times: 200, birthDate: '', cash: 0, failureDetailLimit: 50 },
+      stocks: [],
+      soukan: [],
+      tuika: [],
+      bigExpense: [],
+      income: [],
+      tax: [],
+      exchangeRate: [],
+      exchangeRateCorrelations: [],
+      dividendSetting: [],
+      lifeCostPeriods: [
+        { appliesFromYearMonth: '2000-01', categories: createBlankInflationCategories() }
+      ],
+      cashBufferConfig: {
+        enabled: false, cashBufferYears: 2.5, crashThresholdPct: 20.0, recoveryThresholdPct: 5.0,
+        useJgbBuffer: false, jgbCouponRate: 0.5, jgbStartYearMonth: '', jgbLots: []
+      },
+      bonds: [],
+      inflationModelConfig: { enabled: false, regimeIntensity: 'normal' },
+      idecoConfig: {
+        enabled: false, startYearMonth: '', contributionAgeLimit: 65, companyServiceYears: 0,
+        severanceAmount: 0, severanceYearMonth: '', receiveYearMonth: ''
+      }
+    };
+  }
+
   // =====================================================
   // Android版JSONとの互換変換
   //
@@ -501,6 +557,21 @@
     }
   }
 
+  /**
+   * localStorage に保存されている appData を削除する（データを初期状態にリセットする）。
+   * 実際の初期状態（サンプルシナリオ）の再生成は呼び出し側（main.js）が
+   * createDefaultAppData() を呼んで行う。
+   */
+  function clearAppData() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      return true;
+    } catch (e) {
+      console.error('データのクリアに失敗しました:', e);
+      return false;
+    }
+  }
+
   /** appData をJSONファイルとしてダウンロードする（Android版が読み込める形式に変換してから書き出す） */
   function exportAppDataAsFile(appData) {
     const androidFormatData = convertAppDataToAndroidFormat(appData);
@@ -547,7 +618,8 @@
 
   global.FireState = {
     createDefaultAppData, createDefaultInflationCategories,
-    saveAppData, loadAppData, exportAppDataAsFile, importAppDataFromFile,
+    createBlankAppData, createBlankInflationCategories,
+    saveAppData, loadAppData, clearAppData, exportAppDataAsFile, importAppDataFromFile,
     normalizeImportedAppData, convertAppDataToAndroidFormat,
     reconcileCrossReferencesAfterStockChange,
     extractBaseNameForSoukan

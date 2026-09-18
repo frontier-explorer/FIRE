@@ -84,6 +84,23 @@
       });
       e.target.value = '';
     });
+
+    document.getElementById('btn-clear-data').addEventListener('click', () => {
+      const confirmed = window.confirm(
+        '保存されている設定を全て削除し、まっさらな状態に戻します。\n' +
+        '（生活費の費目名・インフレ率のテンプレートのみ残り、金額は0円になります）\n' +
+        'この操作は取り消せません。よろしいですか？'
+      );
+      if (!confirmed) return;
+
+      FireState.clearAppData();
+      appData = FireState.createBlankAppData();
+      FireState.saveAppData(appData);
+      currentTabId = TABS[0].id;
+      renderTabBar();
+      renderCurrentTab();
+      showToast('データをクリアしました');
+    });
   }
 
   /** アプリ初期化 */
