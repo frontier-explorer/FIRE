@@ -105,6 +105,27 @@
     ]);
   }
 
+  /**
+   * 空欄を「未設定（null）」として扱う数値入力フィールドを1つ生成する。
+   * 緊急労働のしきい値設定など、「空欄なら発動しない」という仕様の項目で使う。
+   * 通常のcreateNumberFieldと異なり、空欄はnullとして保持され、0に丸められない。
+   */
+  function createNullableNumberField(labelText, value, step, onChange) {
+    const input = createElement('input', { type: 'number', step: step || 'any' });
+    input.inputMode = (step !== undefined && String(step).indexOf('.') !== -1) ? 'decimal' : 'numeric';
+    input.value = (value === null || value === undefined) ? '' : value;
+    input.placeholder = '未設定';
+    input.addEventListener('change', (e) => {
+      const raw = e.target.value.trim();
+      if (raw === '') { onChange(null); return; }
+      const parsed = parseFloat(raw);
+      onChange(isNaN(parsed) ? null : parsed);
+    });
+    return createElement('div', { class: 'field' }, [
+      createElement('label', { text: labelText }), input
+    ]);
+  }
+
   // =====================================================
   // 1. 基本設定
   // =====================================================
@@ -1033,9 +1054,91 @@
     container.appendChild(panel2);
   }
 
+  // =====================================================
+  // 15. 破綻回避のための緊急労働
+  // =====================================================
+
+  /**
+   * 緊急労働の3段階しきい値（tiers）が「段階が進むほどしきい値も労働割合も大きくなる」
+   * という関係を満たしているかを検証し、崩れている場合は警告メッセージを返す
+   * （未設定＝nullの段階は比較対象から除外する）。
+   * 入力を強制的に補正はせず、あくまで注意喚起のみ行う。
+   * @returns {string|null} 問題がなければnull、問題があれば説明文
+   */
+  function validateEmergencyLaborTierOrder(tiers) {
+    const setTiers = tiers
+      .map((tier, index) => ({ index, thresholdPct: tier.thresholdPct, laborPct: tier.laborPct }))
+      .filter((tier) => tier.thresholdPct !== null && tier.thresholdPct !== undefined &&
+        tier.laborPct !== null && tier.laborPct !== undefined);
+
+    for (let i = 1; i < setTiers.length; i++) {
+      if (setTiers[i].thresholdPct <= setTiers[i - 1].thresholdPct) {
+        return '取り崩し率のしきい値は、上の段階から下の段階に向かって大きくなるように設定してください。';
+      }
+      if (setTiers[i].laborPct <= setTiers[i - 1].laborPct) {
+        return '労働で稼ぐ生活費の割合は、上の段階から下の段階に向かって大きくなるように設定してください。';
+      }
+    }
+    return null;
+  }
+
+  /** 緊急労働タブの、1段階分の入力行（しきい値・労働割合のペア）を組み立てる */
+  function buildEmergencyLaborTierRow(tier, tierLabel, onChange) {
+    return createElement('div', { class: 'form-grid' }, [
+      createNullableNumberField(tierLabel + '：取り崩し率がこの値（%）以上になったら', tier.thresholdPct, 0.1,
+        (v) => { tier.thresholdPct = v; onChange(); }),
+      createNullableNumberField(tierLabel + '：生活費のこの割合（%）を労働で稼ぐ', tier.laborPct, 1,
+        (v) => { tier.laborPct = v; onChange(); })
+    ]);
+  }
+
+  function renderTabEmergencyLabor(container, appData, onChange) {
+    container.innerHTML = '';
+    const el = appData.emergencyLaborConfig;
+    const panel = createElement('div', { class: 'panel' }, [
+      createElement('h2', { text: '破綻回避のための緊急労働' }),
+      createElement('p', {
+        class: 'desc',
+        text: '「取り崩し率」（年間生活費〔大きな出費は含めない〕を、現在の総資産で割った割合。' +
+          '「4%ルール」と同じ考え方の、資産水準そのものに対する比率です）が設定したしきい値を' +
+          '超えている間、翌月初から生活費の一定割合を労働収入で賄う機能です。その月だけたまたま' +
+          '現金が足りた／足りなかったといった単月の資金繰りの結果は見ておらず、資産が生活費に対して' +
+          '十分な水準に回復するまで、毎月継続して発動します。3段階のしきい値を、下の段階に進むほど' +
+          '厳しい状況（取り崩し率が高く、労働割合も大きい）になるように設定できます。空欄の段階は' +
+          '「設定しない」ことを意味し、発動しません。'
+      }),
+      createElement('div', { class: 'form-grid' }, [
+        createCheckboxField('有効にする', el.enabled, (v) => { el.enabled = v; onChange(); renderTabEmergencyLabor(container, appData, onChange); })
+      ])
+    ]);
+    container.appendChild(panel);
+    if (!el.enabled) return;
+
+    const panel2 = createElement('div', { class: 'panel' }, [
+      createElement('div', { class: 'form-grid' }, [
+        createNumberField('緊急労働を発動できる限界年齢（歳）', el.limitAge, 1, (v) => { el.limitAge = Math.round(v); onChange(); })
+      ]),
+      createElement('p', { class: 'help-text', text: 'この年齢を超えた翌月以降は、取り崩し率がしきい値を超えていても緊急労働は発動しません。' })
+    ]);
+    container.appendChild(panel2);
+
+    const panel3 = createElement('div', { class: 'panel' }, [
+      createElement('h3', { text: '発動条件（3段階。下に行くほど厳しい状況を想定）' }),
+      buildEmergencyLaborTierRow(el.tiers[0], '第1段階', () => { onChange(); renderTabEmergencyLabor(container, appData, onChange); }),
+      buildEmergencyLaborTierRow(el.tiers[1], '第2段階', () => { onChange(); renderTabEmergencyLabor(container, appData, onChange); }),
+      buildEmergencyLaborTierRow(el.tiers[2], '第3段階', () => { onChange(); renderTabEmergencyLabor(container, appData, onChange); })
+    ]);
+    container.appendChild(panel3);
+
+    const warning = validateEmergencyLaborTierOrder(el.tiers);
+    if (warning) {
+      container.appendChild(createElement('p', { class: 'help-text', style: 'color:var(--color-danger, #d33);', text: '⚠ ' + warning }));
+    }
+  }
+
   global.FireUiTabs = {
     renderTabBasic, renderTabStocks, renderTabSoukan, renderTabLifeCost, renderTabIncome,
     renderTabTuika, renderTabBigExpense, renderTabTax, renderTabFx, renderTabDividend,
-    renderTabCashBuffer, renderTabIdeco, renderTabBonds, renderTabInflation
+    renderTabCashBuffer, renderTabIdeco, renderTabBonds, renderTabInflation, renderTabEmergencyLabor
   };
 })(typeof window !== 'undefined' ? window : globalThis);

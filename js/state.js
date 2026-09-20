@@ -141,6 +141,18 @@
       idecoConfig: {
         enabled: true, startYearMonth: '2023-04', contributionAgeLimit: 65, companyServiceYears: 28,
         severanceAmount: 8000000, severanceYearMonth: '2050-01', receiveYearMonth: '2060-01'
+      },
+      // 破綻回避のための緊急労働: デフォルトは無効。有効にした場合、limitAgeで指定した年齢までの間、
+      // 「年間生活費（大きな出費は含めない）÷ 当月末の総資産」で求めた取り崩し率が3段階の
+      // しきい値（tiers）を超えると、翌月から生活費の一定割合を労働収入で賄う。各段階の
+      // thresholdPct/laborPctがnullの場合は「未設定」を意味し、その段階は発動しない。
+      emergencyLaborConfig: {
+        enabled: false, limitAge: 70,
+        tiers: [
+          { thresholdPct: null, laborPct: null },
+          { thresholdPct: null, laborPct: null },
+          { thresholdPct: null, laborPct: null }
+        ]
       }
     };
   }
@@ -197,6 +209,14 @@
       idecoConfig: {
         enabled: false, startYearMonth: '', contributionAgeLimit: 65, companyServiceYears: 0,
         severanceAmount: 0, severanceYearMonth: '', receiveYearMonth: ''
+      },
+      emergencyLaborConfig: {
+        enabled: false, limitAge: 70,
+        tiers: [
+          { thresholdPct: null, laborPct: null },
+          { thresholdPct: null, laborPct: null },
+          { thresholdPct: null, laborPct: null }
+        ]
       }
     };
   }
@@ -566,6 +586,18 @@
       }
       delete inf.correlationStrength;
       normalized.inflationModelConfig = inf;
+    }
+
+    // 緊急労働設定: tiersが3件揃っていない（古い保存データ・手編集されたJSON等）場合に備え、
+    // 不足分をnull（未設定）で補う。既存の値はそのまま維持する。
+    if (normalized.emergencyLaborConfig) {
+      const laborConfig = Object.assign({}, normalized.emergencyLaborConfig);
+      const existingTiers = Array.isArray(laborConfig.tiers) ? laborConfig.tiers.slice(0, 3) : [];
+      while (existingTiers.length < 3) {
+        existingTiers.push({ thresholdPct: null, laborPct: null });
+      }
+      laborConfig.tiers = existingTiers;
+      normalized.emergencyLaborConfig = laborConfig;
     }
 
     return normalized;
