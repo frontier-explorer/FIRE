@@ -177,7 +177,7 @@
   function handleIncomeAndExpense(params) {
     const {
       monthIndex, currentCash, appData, monthlyLifeCost, taxRate,
-      currentFxRates, simStartYear, simStartMonth
+      currentFxRates, simStartYear, simStartMonth, emergencyLaborIncome
     } = params;
 
     let cash = currentCash;
@@ -189,6 +189,13 @@
         (inc.endTotalMonths === null || monthIndex <= inc.endTotalMonths))
       .forEach((inc) => { monthlyIncome += inc.amount; });
     cash += monthlyIncome;
+
+    // ---- 破綻回避のための緊急労働収入 ----
+    // 前月末時点の取り崩し率に応じて発動が決まった金額を、そのまま当月の収入に加える
+    // （「発動の翌月初から給料が入る」という仕様のため、金額自体は呼び出し元で決定済み）。
+    const laborIncome = emergencyLaborIncome || 0.0;
+    monthlyIncome += laborIncome;
+    cash += laborIncome;
 
     // ---- 債券利息収入・満期返金の処理 ----
     const totalMonthsFromEpoch = (simStartYear * 12 + simStartMonth - 1) + monthIndex;
@@ -248,7 +255,7 @@
       requiredAssetSale = totalExpense - cash;
       cash = 0.0;
     }
-    return { cash, monthlyIncome, totalExpense, requiredAssetSale };
+    return { cash, monthlyIncome, totalExpense, requiredAssetSale, emergencyLaborIncome: laborIncome };
   }
 
   // =====================================================
@@ -408,6 +415,54 @@
     if (!isIdecoStock(s)) return false;
     if (idecoReceiveTotalMonths === null || idecoReceiveTotalMonths === undefined) return true;
     return simCurrentTotalMonths < idecoReceiveTotalMonths;
+  }
+
+  // =====================================================
+  // 破綻回避のための緊急労働
+  // =====================================================
+  // 「取り崩し率」が設定した閾値を超えた場合に、翌月から労働収入を得て
+  // 資産の取り崩しを緩和する機能。ガードレール戦略（Guyton-Klinger方式の
+  // 資産防衛ルールに類似した考え方）を、支出カットではなく労働収入の追加で
+  // 実現したもの。
+
+  /**
+   * 生年月日（"yyyy-MM-dd"等。日は無視し年月のみ使う）と対象年月から、
+   * 満年齢を月単位の簡易計算で求める。
+   * @returns {number|null} 生年月日が未設定・不正な場合はnull
+   */
+  function calculateAgeAtYearMonth(birthDate, targetYear, targetMonth) {
+    if (!birthDate) return null;
+    const parts = birthDate.split('-');
+    if (parts.length < 2) return null;
+    const birthYear = parseInt(parts[0], 10);
+    const birthMonth = parseInt(parts[1], 10);
+    if (isNaN(birthYear) || isNaN(birthMonth)) return null;
+    let age = targetYear - birthYear;
+    if (targetMonth < birthMonth) age -= 1;
+    return age;
+  }
+
+  /**
+   * 緊急労働設定（emergencyLaborConfig.tiers）と当月の取り崩し率（%）から、
+   * 「生活費の何％を労働収入で稼ぐか」を決定する。
+   * 3段階（〇/●/▲としきい値、□/■/◆と労働割合）のうち、取り崩し率が
+   * しきい値以上となる段階の中から、最もしきい値が高い（＝最も深刻な）
+   * 段階の労働割合を採用する。しきい値・労働割合のいずれかが未設定（null、
+   * 「空白＝設定しない」を意味する）の段階は評価対象から除外する。
+   * @returns {number} 生活費に対する労働収入の割合（0〜100、%）。該当なしは0
+   */
+  function determineEmergencyLaborPercent(withdrawalRatePct, tiers) {
+    let selectedLaborPercent = 0.0;
+    let selectedThreshold = -Infinity;
+    (tiers || []).forEach((tier) => {
+      if (tier.thresholdPct === null || tier.thresholdPct === undefined) return;
+      if (tier.laborPct === null || tier.laborPct === undefined) return;
+      if (withdrawalRatePct >= tier.thresholdPct && tier.thresholdPct > selectedThreshold) {
+        selectedThreshold = tier.thresholdPct;
+        selectedLaborPercent = tier.laborPct;
+      }
+    });
+    return selectedLaborPercent;
   }
 
   // =====================================================
@@ -1222,6 +1277,18 @@
 
     let currentCash = config.cash;
 
+    // ---- 破綻回避のための緊急労働 ----
+    // 設定が存在しない古い保存データとの後方互換のため、appData.emergencyLaborConfig が
+    // 欠けている場合は「無効（機能OFF）」として扱う。
+    const laborConfigRaw = appData.emergencyLaborConfig || {};
+    const emergencyLaborEnabled = !!laborConfigRaw.enabled;
+    const emergencyLaborLimitAge = (laborConfigRaw.limitAge === null || laborConfigRaw.limitAge === undefined)
+      ? null : laborConfigRaw.limitAge;
+    const emergencyLaborTiers = laborConfigRaw.tiers || [];
+    // 前月末の取り崩し率判定により、当月に支給が決まっている緊急労働収入（円）。
+    // 「発動の翌月初から給料が入る」仕様のため、開始月（monthIndex=0）は必ず0円。
+    let pendingEmergencyLaborIncome = 0.0;
+
     let severancePaidOut = false;
     let idecoPaidOut = false;
     const idecoReceiveTotalMonths = yearMonthToTotalMonths(appData.idecoConfig.receiveYearMonth);
@@ -1355,7 +1422,8 @@
 
       const incExp = handleIncomeAndExpense({
         monthIndex, currentCash, appData, monthlyLifeCost: currentMonthlyLifeCost, taxRate,
-        currentFxRates: currentExchangeRates, simStartYear, simStartMonth
+        currentFxRates: currentExchangeRates, simStartYear, simStartMonth,
+        emergencyLaborIncome: pendingEmergencyLaborIncome
       });
       currentCash = incExp.cash;
 
@@ -1562,6 +1630,36 @@
         jgbLots = [];
       }
 
+      // ---- 緊急労働: 当月の取り崩し率を算出し、翌月分の労働収入を決定する ----
+      // 取り崩し率(%) = 資産から実際に取り崩した額（生活費・大きな出費 − 収入〔当月の
+      // 緊急労働収入を含む〕。マイナスなら0）を年換算し、当月期首の総資産（transferAssets）
+      // に対する割合としたもの。既に破綻している試行では評価しない（労働の意味がないため）。
+      const emergencyLaborIncomeThisMonth = incExp.emergencyLaborIncome;
+      let nextMonthEmergencyLaborIncome = 0.0;
+      if (emergencyLaborEnabled && !fireFailure) {
+        const monthlyNetWithdrawal = coerceAtLeast(incExp.totalExpense - incExp.monthlyIncome, 0.0);
+        const withdrawalRatePct = transferAssets > 0.0
+          ? (monthlyNetWithdrawal * 12.0 / transferAssets) * 100.0
+          : (monthlyNetWithdrawal > 0.0 ? Infinity : 0.0);
+
+        const nextMonthIndex = monthIndex + 1;
+        const nextSimYear = simStartYear + Math.floor((simStartMonth - 1 + nextMonthIndex) / 12);
+        const nextSimMonth = ((simStartMonth - 1 + nextMonthIndex) % 12) + 1;
+        const ageNextMonth = calculateAgeAtYearMonth(config.birthDate, nextSimYear, nextSimMonth);
+        const withinLaborAge = emergencyLaborLimitAge === null || ageNextMonth === null ||
+          ageNextMonth <= emergencyLaborLimitAge;
+
+        if (withinLaborAge) {
+          const laborPercent = determineEmergencyLaborPercent(withdrawalRatePct, emergencyLaborTiers);
+          if (laborPercent > 0.0) {
+            // 翌月の生活費水準は月初のインフレ更新後でないと確定しないため、
+            // 今月時点で確定している生活費水準（currentMonthlyLifeCost）を近似値として用いる。
+            nextMonthEmergencyLaborIncome = currentMonthlyLifeCost * (laborPercent / 100.0);
+          }
+        }
+      }
+      pendingEmergencyLaborIncome = nextMonthEmergencyLaborIncome;
+
       const recTotalAsset = fireFailure ? 0.0 : totalAsset;
       const recCash = fireFailure ? 0.0 : currentCash;
       const recInvestmentAssets = fireFailure ? 0.0 : endAssets;
@@ -1575,7 +1673,10 @@
       lightHistory.push({
         totalAsset: recTotalAsset, cash: recCash, isFailure: fireFailure,
         investmentAssets: recInvestmentAssets, monthlyLifeCost: currentMonthlyLifeCost,
-        income: incExp.monthlyIncome + divResult.gain + jgbCouponThisMonth
+        income: incExp.monthlyIncome + divResult.gain + jgbCouponThisMonth,
+        // 破綻回避のための緊急労働による当月の収入額（円）。全試行分・軽量記録として保持し、
+        // 「成功・失敗のボーダーライン比較」等で詳細データを保持しない試行でも参照できるようにする
+        emergencyLaborIncome: emergencyLaborIncomeThisMonth
       });
 
       if (history) {
@@ -1610,6 +1711,8 @@
           isFailure: fireFailure,
           jgbBufferValue: recJgbBufferValue, jgbBufferLotCount: jgbLots.reduce((s, lo) => s + lo.quantity, 0),
           jgbCouponThisMonth, idecoIncomeThisMonth, jgbPurchaseThisMonth,
+          // 破綻回避のための緊急労働による当月の収入額（円）
+          emergencyLaborIncome: emergencyLaborIncomeThisMonth,
           bondStatuses: recBondStatuses,
           // その月時点の月次生活費（大きな出費・インフレ適用後）。年間生活費の資産比率グラフ等で使用する
           monthlyLifeCost: currentMonthlyLifeCost,
