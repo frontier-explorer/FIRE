@@ -62,7 +62,7 @@
    */
   function selectTrialById(trialId) {
     if (!trialListPanelRefs) return;
-    const { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn } = trialListPanelRefs;
+    const { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth } = trialListPanelRefs;
 
     // trialListPanelRefs.results は「長期平均年率マイナスの異常値除外」フィルタ適用後の配列。
     // 生活費テーブル等、フィルタ非適用のパネルから除外済みの試行番号を指定された場合は、
@@ -76,8 +76,8 @@
     selectedTrialId = trialId;
     // 絞り込み条件によって対象の試行が一覧から消えてしまわないよう、「すべて」に戻す
     trialListFilter = 'all';
-    renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn);
-    renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn);
+    renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
+    renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
     if (typeof detailContainer.scrollIntoView === 'function') {
       detailContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -195,7 +195,13 @@
     container.appendChild(renderLifeCostTablePanel(filteredResults));
     container.appendChild(renderFanChartPanel(filteredResults));
     container.appendChild(renderCsvExportPanel(results, appData.stocks, appData.config.period));
-    container.appendChild(renderTrialListPanel(filteredResults, appData.stocks));
+
+    // 毎月データテーブルの「年齢」列表示用: シミュレーション開始年月（エンジン側と同様に
+    // 実行時点の実際の年月を開始とみなす）と、生年月日（未設定なら年齢列は「-」表示になる）
+    const now = new Date();
+    const simStartYear = now.getFullYear();
+    const simStartMonth = now.getMonth() + 1;
+    container.appendChild(renderTrialListPanel(filteredResults, appData.stocks, appData.config.birthDate, simStartYear, simStartMonth));
   }
 
   /**
@@ -618,6 +624,20 @@
     return Math.floor(monthIndex / 12) + '年' + ((monthIndex % 12) + 1) + '月';
   }
 
+  /**
+   * 毎月データテーブルの「年齢」列表示用。生年月日とシミュレーション開始年月（実行時点の
+   * 実際の年月）から、指定した経過月数（monthIndex、0始まり）の時点での満年齢を求める。
+   * 生年月日が未設定の場合は「-」を返す。
+   */
+  function formatAgeAtMonthIndex(birthDate, simStartYear, simStartMonth, monthIndex) {
+    if (!birthDate) return '-';
+    const totalMonths = simStartYear * 12 + (simStartMonth - 1) + monthIndex;
+    const targetYear = Math.floor(totalMonths / 12);
+    const targetMonth = (totalMonths % 12) + 1;
+    const age = FireEngine.calculateAgeAtYearMonth(birthDate, targetYear, targetMonth);
+    return age === null ? '-' : age + '歳';
+  }
+
   /** 1試行の最終月の総資産を取得する（lightHistoryは全試行で保持されているため常に取得できる） */
   function getTrialFinalAsset(trial) {
     if (trial.lightHistory.length === 0) return 0;
@@ -645,7 +665,7 @@
    * 左の一覧の高さは、右側（グラフ・毎月データ・CSV出力ボタンまで）の実際の
    * 描画後の高さに、JSで動的に合わせる（下記 syncTrialListHeightToRightColumn 参照）。
    */
-  function renderTrialListPanel(results, stocks) {
+  function renderTrialListPanel(results, stocks, birthDate, simStartYear, simStartMonth) {
     const panel = createElement('div', { class: 'panel' }, [
       createElement('h2', { text: '試行別 結果一覧・月次詳細' }),
       createElement('p', {
@@ -662,10 +682,10 @@
     const rightColumn = createElement('div', { class: 'trial-panel-right' }, [detailContainer]);
     panel.appendChild(createElement('div', { class: 'trial-panel-layout' }, [leftColumn, rightColumn]));
 
-    trialListPanelRefs = { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn };
+    trialListPanelRefs = { results, stocks, controlsContainer, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth };
 
-    renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn);
-    renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn);
+    renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
+    renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
 
     return panel;
   }
@@ -700,12 +720,12 @@
    * ボタンのラベル（ソート方向）やハイライト状態（選択中フィルタ）は状態が変わるたびに
    * 見た目に反映する必要があるため、状態変更のたびにこの関数ごと再描画する。
    */
-  function renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn) {
+  function renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth) {
     controlsContainer.innerHTML = '';
 
     const applyStateChange = () => {
-      renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn);
-      renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn);
+      renderTrialListControls(controlsContainer, results, stocks, listContainer, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
+      renderTrialListTable(listContainer, results, stocks, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth);
     };
 
     const makeFilterBtn = (value, label) => createElement('button', {
@@ -740,7 +760,7 @@
   }
 
   /** 絞り込み・並び替え条件に従って試行一覧テーブルを描画する */
-  function renderTrialListTable(container, results, stocks, detailContainer, rightColumn) {
+  function renderTrialListTable(container, results, stocks, detailContainer, rightColumn, birthDate, simStartYear, simStartMonth) {
     container.innerHTML = '';
 
     let filtered = results;
@@ -768,7 +788,7 @@
           // 一覧全体を再描画するとスクロール位置が失われるため、ハイライトの
           // 付け替えのみをその場で行い、テーブル自体は再構築しない
           highlightSelectedTrialRow(container);
-          renderSelectedTrialDetail(detailContainer, trial, stocks);
+          renderSelectedTrialDetail(detailContainer, trial, stocks, birthDate, simStartYear, simStartMonth);
           syncTrialListHeightToRightColumn(listScrollElement, rightColumn);
         }
       }, [
@@ -792,10 +812,10 @@
     // まだ何も選択されていなければ、一覧の先頭の試行を自動的に選択して表示する
     if (selectedTrialId === null && sorted.length > 0) {
       selectedTrialId = sorted[0].trialId;
-      renderSelectedTrialDetail(detailContainer, sorted[0], stocks);
+      renderSelectedTrialDetail(detailContainer, sorted[0], stocks, birthDate, simStartYear, simStartMonth);
     } else if (selectedTrialId !== null) {
       const stillSelected = sorted.find((t) => t.trialId === selectedTrialId);
-      if (stillSelected) renderSelectedTrialDetail(detailContainer, stillSelected, stocks);
+      if (stillSelected) renderSelectedTrialDetail(detailContainer, stillSelected, stocks, birthDate, simStartYear, simStartMonth);
     }
 
     // 右カラム（グラフ・毎月データ・CSV出力ボタンまで）の描画が終わった直後の高さに、
@@ -804,7 +824,7 @@
   }
 
   /** 選択された1試行の詳細（毎月のデータ）を描画する。内訳データの有無に応じて表示内容を切り替える */
-  function renderSelectedTrialDetail(container, trial, stocks) {
+  function renderSelectedTrialDetail(container, trial, stocks, birthDate, simStartYear, simStartMonth) {
     container.innerHTML = '';
     container.appendChild(createElement('h2', { text: '試行#' + trial.trialId + ' の毎月データ（' + (trial.success ? '成功' : '失敗') + '）' }));
 
@@ -817,7 +837,7 @@
       }));
       container.appendChild(renderStockCompositionChartPanel(trial, stocks));
       container.appendChild(renderStockAnnualReturnChartPanel(trial));
-      renderTrialMonthlyTableFull(container, trial, stocks);
+      renderTrialMonthlyTableFull(container, trial, stocks, birthDate, simStartYear, simStartMonth);
 
       const csvBtn = createElement('button', {
         class: 'btn btn-sm', text: 'この試行をCSV出力',
@@ -834,7 +854,7 @@
           '（口座別の内訳・保有口数・出費・税金などの詳細データは試行#1と、失敗試行の一部にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で保持件数を増やせます）。'
       }));
       container.appendChild(renderStockAnnualReturnChartPanel(trial));
-      renderTrialMonthlyTableLight(container, trial);
+      renderTrialMonthlyTableLight(container, trial, birthDate, simStartYear, simStartMonth);
     }
   }
 
@@ -1056,7 +1076,7 @@
    * 内訳データ（history）を持つ試行の毎月データを、全期間分・省略なしで表形式表示する。
    * 各行はクリック可能にし、クリックするとその月の各口座・銘柄の内訳を別ウィンドウで表示する。
    */
-  function renderTrialMonthlyTableFull(container, trial, stocks) {
+  function renderTrialMonthlyTableFull(container, trial, stocks, birthDate, simStartYear, simStartMonth) {
     // インフレモデルが無効な場合、regimeは常にNORMAL固定なので意味を持たない → 「-」表示にする
     const inflationModelEnabled = currentInflationModelEnabled;
     const table = createElement('table', { class: 'data-table' });
@@ -1064,6 +1084,7 @@
     table.appendChild(createElement('thead', {}, [
       createElement('tr', {}, [
         createElement('th', { text: '年月' }),
+        createElement('th', { text: '年齢' }),
         createElement('th', { text: '総資産' }),
         createElement('th', { text: '現金' }),
         createElement('th', { text: '投資資産' }),
@@ -1078,13 +1099,14 @@
       ])
     ]));
     const tbody = createElement('tbody');
-    trial.history.forEach((record) => {
+    trial.history.forEach((record, monthIndex) => {
       tbody.appendChild(createElement('tr', {
         style: 'cursor:pointer;',
         title: 'クリックすると、この月の各口座・銘柄の内訳を別ウィンドウで表示します',
         onclick: () => openMonthDetailWindow(trial, record, stocks)
       }, [
         createElement('td', { text: record.yearMonth }),
+        createElement('td', { text: formatAgeAtMonthIndex(birthDate, simStartYear, simStartMonth, monthIndex) }),
         createElement('td', { text: formatYen(record.totalAsset) }),
         createElement('td', { text: formatYen(record.cash) }),
         createElement('td', { text: formatYen(record.endOfPeriodAssets) }),
@@ -1318,15 +1340,16 @@
 
 
   /** 内訳データを持たない試行（総資産・現金・生活費・収入のみ）の毎月データを、全期間分・省略なしで表形式表示する */
-  function renderTrialMonthlyTableLight(container, trial) {
+  function renderTrialMonthlyTableLight(container, trial, birthDate, simStartYear, simStartMonth) {
     const table = createElement('table', { class: 'data-table' });
     table.appendChild(createElement('thead', {}, [
-      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', '緊急労働収入', '破綻'].map((h) => createElement('th', { text: h })))
+      createElement('tr', {}, ['年月', '年齢', '総資産', '現金', '投資資産', '生活費', '収入', '緊急労働収入', '破綻'].map((h) => createElement('th', { text: h })))
     ]));
     const tbody = createElement('tbody');
     trial.lightHistory.forEach((record, i) => {
       tbody.appendChild(createElement('tr', {}, [
         createElement('td', { text: formatYearMonthLabel(i) }),
+        createElement('td', { text: formatAgeAtMonthIndex(birthDate, simStartYear, simStartMonth, i) }),
         createElement('td', { text: formatYen(record.totalAsset) }),
         createElement('td', { text: formatYen(record.cash) }),
         createElement('td', { text: formatYen(record.investmentAssets) }),

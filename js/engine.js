@@ -2105,6 +2105,8 @@
     runSimulation, runSimulationChunked, runSimulationWithShock, calculateSummary, calculatePercentileTimeline,
     calculateLifeCostTable, filterOutLongTermNegativeReturnAnomalies,
     percentile, calculateTaxRate, yearMonthToTotalMonths,
+    // 毎月データテーブルの「年齢」列表示用に、UI側（ui-simulation.js）からも呼び出す
+    calculateAgeAtYearMonth,
     // テスト・デバッグ用に内部関数の一部も公開する
     // getBaseName: 相関係数タブ（ui-tabs.js）が、保有銘柄一覧からベース銘柄名
     // （＜口座種別＞を除いた部分）を重複排除して選択肢を作るために使う
