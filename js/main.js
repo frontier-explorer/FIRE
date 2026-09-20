@@ -26,7 +26,6 @@
     { id: 'ideco', label: 'iDeCo', render: window.FireUiTabs.renderTabIdeco },
     { id: 'bonds', label: '債券', render: window.FireUiTabs.renderTabBonds },
     { id: 'inflation', label: 'インフレモデル', render: window.FireUiTabs.renderTabInflation },
-    { id: 'emergencylabor', label: '緊急労働', render: window.FireUiTabs.renderTabEmergencyLabor },
     { id: 'run', label: '▶ 実行・結果', render: window.FireUiSimulation.renderTabRun }
   ];
 

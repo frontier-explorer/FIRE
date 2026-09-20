@@ -118,35 +118,6 @@
   }
 
   /**
-   * 1試行分の、指定した年数N時点（その月）における「緊急労働収入」（円）を取得する。
-   * lightHistory（全試行に記録済みの軽量データ）のemergencyLaborIncomeをそのまま使うため、
-   * 詳細データ（history）を保持していない試行についても取得できる。
-   * @returns {number|null} 指定年数までの記録がない試行の場合はnull
-   */
-  function getEmergencyLaborIncomeAtYear(trial, yearN) {
-    const monthIndexAtYearN = yearN * 12 - 1;
-    const record = trial.lightHistory[monthIndexAtYearN];
-    return record ? record.emergencyLaborIncome : null;
-  }
-
-  /**
-   * 1試行分の、開始時点からN年目までの「緊急労働収入」の累計額（円）を計算する。
-   * 「ギリギリ失敗／ギリギリ成功」を分けたのが市場の成長率だけでなく、労働による
-   * 収入補填の有無・多寡である可能性を確認するために使う。
-   * @returns {number|null} 指定年数までの記録がない試行の場合はnull
-   */
-  function sumEmergencyLaborIncomeUpToYear(trial, yearN) {
-    const monthCount = yearN * 12;
-    const usedMonths = Math.min(monthCount, trial.lightHistory.length);
-    if (usedMonths <= 0) return null;
-    let total = 0.0;
-    for (let m = 0; m < usedMonths; m++) {
-      total += trial.lightHistory[m].emergencyLaborIncome || 0.0;
-    }
-    return total;
-  }
-
-  /**
    * 1試行分の、開始時点からN年目までの「バッファCRISIS滞在割合（%）」を計算する。
    * cashBufferMode/effectiveMode は詳細データ（history）にのみ記録されている（軽量データの
    * lightHistoryには含まれない）ため、詳細を保持していない試行（先頭以外の成功ケースや、
@@ -208,7 +179,6 @@
 
   global.FireBorderline = {
     findBorderlineCases, calculateStockAverageAnnualRates, calculateFxAverageAnnualRates, getLifeCostAtYear,
-    calculateCrisisBufferRatio, countBadRegimeYears, countCrisisMonths,
-    getEmergencyLaborIncomeAtYear, sumEmergencyLaborIncomeUpToYear
+    calculateCrisisBufferRatio, countBadRegimeYears, countCrisisMonths
   };
 })(typeof window !== 'undefined' ? window : globalThis);

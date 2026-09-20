@@ -370,16 +370,6 @@
       createElement('td', { text: successLifeCost !== null ? formatYen(successLifeCost) : '-' })
     ]));
 
-    // 「ギリギリ失敗／ギリギリ成功」それぞれの、開始時点からN年目までの緊急労働収入累計。
-    // 労働による収入補填の有無・多寡がボーダーラインを分けているかどうかを確認するための行
-    const failureLaborTotal = failureCase ? FireBorderline.sumEmergencyLaborIncomeUpToYear(failureCase, yearN) : null;
-    const successLaborTotal = successCase ? FireBorderline.sumEmergencyLaborIncomeUpToYear(successCase, yearN) : null;
-    tbody.appendChild(createElement('tr', {}, [
-      createElement('td', { text: '緊急労働収入累計（' + yearN + '年目まで）' }),
-      createElement('td', { text: failureLaborTotal !== null ? formatYen(failureLaborTotal) : '-' }),
-      createElement('td', { text: successLaborTotal !== null ? formatYen(successLaborTotal) : '-' })
-    ]));
-
     // バッファCRISIS滞在割合・悪性レジーム遭遇回数は詳細データ（history）にのみ記録されている
     // regime/effectiveModeを使って計算するため、詳細を保持していない試行（先頭以外の
     // 成功ケースや、失敗詳細保存件数の上限を超えた失敗ケース）ではnullになる。
@@ -1068,7 +1058,6 @@
         createElement('th', { text: '現金' }),
         createElement('th', { text: '投資資産' }),
         createElement('th', { text: '収入' }),
-        createElement('th', { text: '緊急労働収入' }),
         createElement('th', { text: '出費' }),
         createElement('th', { text: '税金' }),
         createElement('th', { text: '破綻' }),
@@ -1089,7 +1078,6 @@
         createElement('td', { text: formatYen(record.cash) }),
         createElement('td', { text: formatYen(record.endOfPeriodAssets) }),
         createElement('td', { text: formatYen(record.income) }),
-        createElement('td', { text: formatYen(record.emergencyLaborIncome) }),
         createElement('td', { text: formatYen(record.expense) }),
         createElement('td', { text: formatYen(record.tax) }),
         createElement('td', { text: formatFailureMark(record.isFailure) }),
@@ -1321,7 +1309,7 @@
   function renderTrialMonthlyTableLight(container, trial) {
     const table = createElement('table', { class: 'data-table' });
     table.appendChild(createElement('thead', {}, [
-      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', '緊急労働収入', '破綻'].map((h) => createElement('th', { text: h })))
+      createElement('tr', {}, ['年月', '総資産', '現金', '投資資産', '生活費', '収入', '破綻'].map((h) => createElement('th', { text: h })))
     ]));
     const tbody = createElement('tbody');
     trial.lightHistory.forEach((record, i) => {
@@ -1332,7 +1320,6 @@
         createElement('td', { text: formatYen(record.investmentAssets) }),
         createElement('td', { text: formatYen(record.monthlyLifeCost) }),
         createElement('td', { text: formatYen(record.income) }),
-        createElement('td', { text: formatYen(record.emergencyLaborIncome) }),
         createElement('td', { text: formatFailureMark(record.isFailure) })
       ]));
     });

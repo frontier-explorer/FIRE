@@ -28,7 +28,7 @@
   function buildHeaderRow(stocks) {
     const fixedColumns = [
       '試行番号', '破綻月Index', '年月', '総資産', '現金', '出費', '収入', '追加投資',
-      'ideco収入', '緊急労働収入', '税金', 'isFailure',
+      'ideco収入', '税金', 'isFailure',
       '国債バッファ評価額', '国債バッファ口数', '国債バッファ当月利息', '国債バッファ購入額'
     ];
     const stockColumns = [];
@@ -51,7 +51,7 @@
       trialId, failureMonth, record.yearMonth,
       Math.trunc(record.totalAsset), Math.trunc(record.cash), Math.trunc(record.expense),
       Math.trunc(record.income), Math.trunc(record.tuika), Math.trunc(record.idecoIncomeThisMonth),
-      Math.trunc(record.emergencyLaborIncome), Math.trunc(record.tax), record.isFailure ? 'TRUE' : 'FALSE',
+      Math.trunc(record.tax), record.isFailure ? 'TRUE' : 'FALSE',
       Math.trunc(record.jgbBufferValue), record.jgbBufferLotCount,
       Math.trunc(record.jgbCouponThisMonth), Math.trunc(record.jgbPurchaseThisMonth)
     ];
@@ -151,8 +151,6 @@
     const fixedColumns = [
       '試行番号', '最終結果', '破綻月Index', '最終総資産額',
       yearN + '年目時点_月次生活費（インフレ適用後）',
-      yearN + '年目時点_緊急労働月収（円）',
-      yearN + '年目までの緊急労働収入累計（円）',
       yearN + '年目時点_CRISIS滞在月数（詳細データがない試行は空欄）',
       yearN + '年目までの悪性レジーム(TIGHTENING/STAGFLATION)発生年数（詳細データがない試行は空欄）'
     ];
@@ -166,8 +164,6 @@
     const stockRates = global.FireBorderline.calculateStockAverageAnnualRates(result, yearN);
     const fxRates = global.FireBorderline.calculateFxAverageAnnualRates(result, yearN);
     const lifeCost = global.FireBorderline.getLifeCostAtYear(result, yearN);
-    const emergencyLaborIncomeAtYear = global.FireBorderline.getEmergencyLaborIncomeAtYear(result, yearN);
-    const emergencyLaborIncomeTotal = global.FireBorderline.sumEmergencyLaborIncomeUpToYear(result, yearN);
     const crisisMonths = global.FireBorderline.countCrisisMonths(result, yearN);
     const badRegimeYears = global.FireBorderline.countBadRegimeYears(result, yearN);
     const finalRecord = result.lightHistory[result.lightHistory.length - 1];
@@ -178,8 +174,6 @@
       result.success ? '' : result.failureMonth,
       Math.trunc(finalRecord ? finalRecord.totalAsset : 0),
       lifeCost !== null ? Math.trunc(lifeCost) : '',
-      emergencyLaborIncomeAtYear !== null ? Math.trunc(emergencyLaborIncomeAtYear) : '',
-      emergencyLaborIncomeTotal !== null ? Math.trunc(emergencyLaborIncomeTotal) : '',
       crisisMonths !== null ? crisisMonths : '',
       badRegimeYears !== null ? badRegimeYears : ''
     ];
