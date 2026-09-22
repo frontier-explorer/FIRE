@@ -1135,6 +1135,66 @@
   }
 
   // =====================================================
+  // 生活費カテゴリの個別終了年月（endYearMonth）対応
+  //
+  // 【背景】
+  // 生活費期間（lifeCostPeriods）は「適用開始年月ごとにカテゴリ一覧を丸ごと
+  // 入れ替える」仕組みのため、例えば「車を手放す70歳」のように一部の費目だけを
+  // 途中で無くしたい場合、他の費目も含めて新しい期間を丸ごと作り直す必要があり、
+  // 残す費目のインフレ複利計算がリセットされてしまう問題があった。
+  //
+  // これを避けるため、カテゴリごとに複利計算後の金額（amount）を個別に保持する
+  // 「カテゴリ状態（CategoryState）」を導入し、期間内では各カテゴリが自分自身の
+  // インフレ率でそれぞれ複利計算を続けられるようにする。カテゴリに endYearMonth
+  // （終了年月、"yyyy-MM"形式）が設定されている場合、シミュレーション上の年月が
+  // その年月に達した時点から、他のカテゴリの計算に影響を与えずそのカテゴリだけを
+  // 合計額から除外する。
+  // =====================================================
+
+  /**
+   * カテゴリが指定年月時点でまだ有効（終了年月に達していない）かどうかを判定する。
+   * endYearMonth が空文字・未設定の場合は「無期限に継続」を意味し常に有効とする。
+   */
+  function isLifeCostCategoryActive(categoryState, simCurrentYearMonth) {
+    return !categoryState.endYearMonth || simCurrentYearMonth < categoryState.endYearMonth;
+  }
+
+  /**
+   * 生活費期間のカテゴリ定義（設定値）から、月次ループの中で個別に複利計算していく
+   * ための状態オブジェクトの配列を生成する。生活費期間が切り替わるたびに呼び出し、
+   * その期間で新たに設定された金額からカテゴリごとの複利計算をやり直す。
+   */
+  function createLifeCostCategoryStates(categories) {
+    return categories.map((c) => ({
+      name: c.name,
+      amount: c.monthlyAmount,
+      inflationRate: c.inflationRate,
+      endYearMonth: c.endYearMonth || ''
+    }));
+  }
+
+  /** 終了年月に達していない（＝現在も有効な）カテゴリの金額だけを合計し、当月の生活費合計を求める */
+  function sumActiveLifeCost(categoryStates, simCurrentYearMonth) {
+    return categoryStates.reduce((sum, state) => (
+      isLifeCostCategoryActive(state, simCurrentYearMonth) ? sum + state.amount : sum
+    ), 0.0);
+  }
+
+  /**
+   * 毎年1月に、まだ終了年月に達していない各カテゴリの金額へ、そのカテゴリ自身の
+   * インフレ率（＋マクロ経済レジームによる加算分）で複利計算を適用する。
+   * カテゴリごとに個別のインフレ率を保つことで、一部のカテゴリが終了しても
+   * 他のカテゴリの成長率（加重平均が変わってしまう問題）に影響しない。
+   */
+  function growLifeCostCategoryStates(categoryStates, simCurrentYearMonth, regimeDeltaPt) {
+    categoryStates.forEach((state) => {
+      if (!isLifeCostCategoryActive(state, simCurrentYearMonth)) return;
+      const effectiveRate = state.inflationRate / 100.0 + (regimeDeltaPt || 0) / 100.0;
+      state.amount *= (1.0 + effectiveRate);
+    });
+  }
+
+  // =====================================================
   // 保有銘柄の相関行列（コレスキー分解）構築
   // =====================================================
 
@@ -1250,9 +1310,10 @@
     const simStartMonth = now.getMonth() + 1;
 
     let currentPeriodIndex = 0;
-    let currentCategories = sortedPeriods.length > 0 ? sortedPeriods[0].categories : [];
-    let inflationRate = calculateWeightedInflationRate(currentCategories);
-    let currentMonthlyLifeCost = currentCategories.reduce((s, c) => s + c.monthlyAmount, 0.0);
+    // カテゴリごとに個別複利計算するための状態配列（生活費期間の切り替え時に作り直す）
+    let currentCategoryStates = createLifeCostCategoryStates(sortedPeriods.length > 0 ? sortedPeriods[0].categories : []);
+    const simStartYearMonthStr = String(simStartYear).padStart(4, '0') + '-' + String(simStartMonth).padStart(2, '0');
+    let currentMonthlyLifeCost = sumActiveLifeCost(currentCategoryStates, simStartYearMonthStr);
 
     // マクロ経済レジーム（確率的インフレ変動モデルが有効な場合のみ使用）。
     // 開始時点はNORMALとし、以後1年ごとにdrawNextRegime()で更新する。
@@ -1366,9 +1427,7 @@
         const nextPeriod = sortedPeriods[currentPeriodIndex + 1];
         if (simCurrentYearMonth >= nextPeriod.appliesFromYearMonth) {
           currentPeriodIndex++;
-          currentCategories = nextPeriod.categories;
-          inflationRate = calculateWeightedInflationRate(currentCategories);
-          currentMonthlyLifeCost = currentCategories.reduce((s, c) => s + c.monthlyAmount, 0.0);
+          currentCategoryStates = createLifeCostCategoryStates(nextPeriod.categories);
           lifeCostReset = true;
         }
       }
@@ -1382,12 +1441,13 @@
       }
 
       if (monthIndex > 0 && monthIndex % 12 === 0 && !lifeCostReset) {
-        let effectiveInflationRate = inflationRate;
-        if (appData.inflationModelConfig.enabled) {
-          effectiveInflationRate = inflationRate + currentRegimeParams.inflationDeltaPt / 100.0;
-        }
-        currentMonthlyLifeCost *= (1.0 + effectiveInflationRate);
+        const regimeDeltaPt = appData.inflationModelConfig.enabled ? currentRegimeParams.inflationDeltaPt : 0;
+        growLifeCostCategoryStates(currentCategoryStates, simCurrentYearMonth, regimeDeltaPt);
       }
+      // 終了年月に達したカテゴリを除外した、当月時点の生活費合計を都度算出する。
+      // 期間切り替え・年次インフレ適用の有無に関わらず毎月必ず再計算することで、
+      // カテゴリが終了年月に到達した月から即座に合計額から除かれるようにする。
+      currentMonthlyLifeCost = sumActiveLifeCost(currentCategoryStates, simCurrentYearMonth);
 
       // ---- iDeCo・退職金の一括受給イベント ----
       let taxPayment = 0.0;

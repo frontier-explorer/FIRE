@@ -32,7 +32,7 @@
       ['娯楽・教育', 0.10, 2.0]
     ];
     return defs.map(([name, ratio, rate]) => ({
-      name, monthlyAmount: Math.round(totalMonthly * ratio), inflationRate: rate
+      name, monthlyAmount: Math.round(totalMonthly * ratio), inflationRate: rate, endYearMonth: ''
     }));
   }
 
@@ -176,7 +176,7 @@
       ['医療費・保険料', 3.0],
       ['娯楽費', 2.0]
     ];
-    return defs.map(([name, rate]) => ({ name, monthlyAmount: 0, inflationRate: rate }));
+    return defs.map(([name, rate]) => ({ name, monthlyAmount: 0, inflationRate: rate, endYearMonth: '' }));
   }
 
   /**
@@ -586,6 +586,14 @@
       }
       delete inf.correlationStrength;
       normalized.inflationModelConfig = inf;
+    }
+
+    // 生活費カテゴリ: 終了年月（endYearMonth）フィールドを持たない古い保存データ・
+    // インポートJSONとの後方互換のため、未設定なら空文字（＝無期限に継続）で補う
+    if (Array.isArray(normalized.lifeCostPeriods)) {
+      normalized.lifeCostPeriods = normalized.lifeCostPeriods.map((period) => Object.assign({}, period, {
+        categories: (period.categories || []).map((c) => Object.assign({ endYearMonth: '' }, c))
+      }));
     }
 
     // 緊急労働設定: tiersが3件揃っていない（古い保存データ・手編集されたJSON等）場合に備え、

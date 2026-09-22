@@ -563,7 +563,10 @@
       createElement('p', {
         class: 'desc',
         text: '適用開始年月ごとに生活費カテゴリを設定できます（例: 定年後に生活費が変わる場合など）。' +
-          '「2000-01」は削除できない基底期間です。各カテゴリのインフレ率は年率で、毎年1月に複利適用されます。'
+          '「2000-01」は削除できない基底期間です。各カテゴリのインフレ率は年率で、毎年1月に複利適用されます。' +
+          '各カテゴリの「終了年月」に年月を指定すると、他のカテゴリのインフレ複利計算に影響を与えずに、' +
+          'その年月からその費目だけを生活費合計から除外できます（例: 免許返納で70歳から車の維持費だけが無くなる場合など）。' +
+          '新しい期間を作らずに一部の費目だけを終了させたい場合にお使いください。'
       })
     ]));
 
@@ -587,10 +590,11 @@
         columns: [
           { key: 'name', label: 'カテゴリ名', type: 'text' },
           { key: 'monthlyAmount', label: '月額（円）', type: 'number' },
-          { key: 'inflationRate', label: 'インフレ率%（年率）', type: 'number', step: '0.1' }
+          { key: 'inflationRate', label: 'インフレ率%（年率）', type: 'number', step: '0.1' },
+          { key: 'endYearMonth', label: '終了年月（空欄なら継続）', type: 'month' }
         ],
         rows: period.categories,
-        createEmptyRow: () => ({ name: '新規カテゴリ', monthlyAmount: 0, inflationRate: 2.0 }),
+        createEmptyRow: () => ({ name: '新規カテゴリ', monthlyAmount: 0, inflationRate: 2.0, endYearMonth: '' }),
         onChange: () => onChange(),
         addButtonLabel: '＋ カテゴリを追加'
       });
