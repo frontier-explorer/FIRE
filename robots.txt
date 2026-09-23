@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://frontier-explorer.github.io/FIRE/sitemap.xml
