@@ -25,7 +25,7 @@
   }
 
   /** ヘッダ行を生成する */
-  function buildHeaderRow(stocks) {
+  function buildHeaderRow(stocks, lifeCostNames) {
     const fixedColumns = [
       '試行番号', '破綻月Index', '年月', '総資産', '現金', '出費', '収入', '追加投資',
       'ideco収入', '緊急労働収入', '税金', 'isFailure',
@@ -41,12 +41,13 @@
     });
     const fxColumns = [];
     FX_PAIRS.forEach((pair) => { fxColumns.push(pair + '_レート', pair + '_変動率%'); });
+    const lifeCostColumns = (lifeCostNames || []).map((name) => '生活費【' + name + '】_月額(円)');
 
-    return fixedColumns.concat(stockColumns, fxColumns).map(escapeCsvField).join(',');
+    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns).map(escapeCsvField).join(',');
   }
 
   /** データ行（1行=1ヶ月）を生成する */
-  function buildDataRow(trialId, failureMonth, record, stocks, prevFxRates) {
+  function buildDataRow(trialId, failureMonth, record, stocks, prevFxRates, lifeCostAmountsByName) {
     const fixedValues = [
       trialId, failureMonth, record.yearMonth,
       Math.trunc(record.totalAsset), Math.trunc(record.cash), Math.trunc(record.expense),
@@ -81,16 +82,34 @@
       fxValues.push(rateStr, changeStr);
     });
 
-    return fixedValues.concat(stockValues, fxValues).map(escapeCsvField).join(',');
+    const lifeCostValues = (lifeCostAmountsByName || []).map((amount) => (amount !== undefined ? Math.trunc(amount) : ''));
+
+    return fixedValues.concat(stockValues, fxValues, lifeCostValues).map(escapeCsvField).join(',');
+  }
+
+  /**
+   * 生活費カテゴリ名の並び順に沿って、指定した試行・月インデックス時点の各カテゴリの月額（円）を
+   * 並べた配列を返す（CSVの列の並びに合わせるためのヘルパー）。値が変化しない月は直近の記録が
+   * そのまま使われる（carry-forward、FireBorderline.calculateLifeCostBreakdownAtMonthに準拠）。
+   */
+  function buildLifeCostAmountsForMonth(result, monthIndex, lifeCostNames) {
+    if (lifeCostNames.length === 0) return [];
+    const breakdown = global.FireBorderline.calculateLifeCostBreakdownAtMonth(result, monthIndex);
+    return lifeCostNames.map((name) => {
+      const item = breakdown.find((r) => r.name === name);
+      return item ? item.currentAmount : undefined;
+    });
   }
 
   /** 対象試行リストからCSV本文（ヘッダ+データ行）を構築する */
   function buildCsvContent(targetResults, stocks) {
-    const lines = [buildHeaderRow(stocks)];
+    const lifeCostNames = targetResults.length > 0 ? global.FireBorderline.getLifeCostCategoryNames(targetResults[0]) : [];
+    const lines = [buildHeaderRow(stocks, lifeCostNames)];
     targetResults.forEach((result) => {
       let prevFxRates = {};
-      result.history.forEach((record) => {
-        lines.push(buildDataRow(result.trialId, result.failureMonth, record, stocks, prevFxRates));
+      result.history.forEach((record, monthIndex) => {
+        const lifeCostAmounts = buildLifeCostAmountsForMonth(result, monthIndex, lifeCostNames);
+        lines.push(buildDataRow(result.trialId, result.failureMonth, record, stocks, prevFxRates, lifeCostAmounts));
         prevFxRates = record.fxRates;
       });
     });
@@ -147,7 +166,7 @@
    * CRISIS滞在月数・悪性レジーム発生年数は詳細データ（history）を保持していない試行では
    * 計算できないため、該当セルは空欄になる（試行番号・最終結果等の他の列は通常通り出力される）。
    */
-  function buildBreakpointHeaderRow(baseNames, fxPairs, yearN) {
+  function buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, yearN) {
     const fixedColumns = [
       '試行番号', '最終結果', '破綻月Index', '最終総資産額',
       yearN + '年目時点_月次生活費（インフレ適用後）',
@@ -158,14 +177,24 @@
     ];
     const stockColumns = baseNames.map((name) => name + '_累積CAGR(' + yearN + '年目まで)%');
     const fxColumns = fxPairs.map((pair) => pair + '_累積CAGR(' + yearN + '年目まで)%');
-    return fixedColumns.concat(stockColumns, fxColumns).map(escapeCsvField).join(',');
+    const lifeCostColumns = [];
+    lifeCostNames.forEach((name) => {
+      lifeCostColumns.push(
+        '生活費【' + name + '】_月額(' + yearN + '年目時点)円',
+        '生活費【' + name + '】_増幅割合(スタート比)%',
+        '生活費【' + name + '】_年平均インフレ率(実績)%',
+        '生活費【' + name + '】_生活費内シェア%'
+      );
+    });
+    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns).map(escapeCsvField).join(',');
   }
 
   /** 「分岐点分析用サマリーCSV」の1試行分のデータ行を生成する */
-  function buildBreakpointDataRow(result, yearN, baseNames, fxPairs) {
+  function buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames) {
     const stockRates = global.FireBorderline.calculateStockAverageAnnualRates(result, yearN);
     const fxRates = global.FireBorderline.calculateFxAverageAnnualRates(result, yearN);
     const lifeCost = global.FireBorderline.getLifeCostAtYear(result, yearN);
+    const lifeCostBreakdown = global.FireBorderline.calculateLifeCostBreakdownAtYear(result, yearN);
     const emergencyLaborIncomeAtYear = global.FireBorderline.getEmergencyLaborIncomeAtYear(result, yearN);
     const emergencyLaborIncomeTotal = global.FireBorderline.sumEmergencyLaborIncomeUpToYear(result, yearN);
     const crisisMonths = global.FireBorderline.countCrisisMonths(result, yearN);
@@ -192,8 +221,18 @@
       const item = fxRates.find((r) => r.pair === pair);
       return item ? item.cagrPercent.toFixed(4) : '';
     });
+    const lifeCostValues = [];
+    lifeCostNames.forEach((name) => {
+      const item = lifeCostBreakdown.find((r) => r.name === name);
+      lifeCostValues.push(
+        item ? Math.trunc(item.currentAmount) : '',
+        (item && item.growthRatioPercent !== null) ? item.growthRatioPercent.toFixed(4) : '',
+        (item && item.annualizedRatePercent !== null) ? item.annualizedRatePercent.toFixed(4) : '',
+        (item && item.sharePercent !== null) ? item.sharePercent.toFixed(4) : ''
+      );
+    });
 
-    return fixedValues.concat(stockValues, fxValues).map(escapeCsvField).join(',');
+    return fixedValues.concat(stockValues, fxValues, lifeCostValues).map(escapeCsvField).join(',');
   }
 
   /**
@@ -209,9 +248,10 @@
     }
     const baseNames = Object.keys(results[0].monthlyStockRates || {});
     const fxPairs = Object.keys(results[0].monthlyFxRates || {});
-    const lines = [buildBreakpointHeaderRow(baseNames, fxPairs, yearN)];
+    const lifeCostNames = global.FireBorderline.getLifeCostCategoryNames(results[0]);
+    const lines = [buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, yearN)];
     results.forEach((result) => {
-      lines.push(buildBreakpointDataRow(result, yearN, baseNames, fxPairs));
+      lines.push(buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames));
     });
     const fileName = 'FIRE_分岐点分析_' + yearN + '年目_' + formatTimestamp(new Date()) + '.csv';
     downloadCsv(fileName, lines.join('\r\n'));

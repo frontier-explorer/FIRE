@@ -206,9 +206,97 @@
     return badRegimeYearSet.size;
   }
 
+  /**
+   * 生活費カテゴリの記録（trial.lifeCostCategoryHistory）から、指定した月インデックス以前で
+   * 直近に記録されたスナップショットを取得する（carry-forward：値は次の記録まで変化しないため）。
+   * @returns {{monthIndex: number, categories: Array<{name: string, amount: number}>}|null}
+   */
+  function findLifeCostSnapshotAtMonth(trial, monthIndex) {
+    const history = trial.lifeCostCategoryHistory;
+    if (!history || history.length === 0) return null;
+    if (history[0].monthIndex > monthIndex) return null; // まだ開始前（通常は発生しない）
+    let snapshot = history[0];
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].monthIndex <= monthIndex) snapshot = history[i]; else break;
+    }
+    return snapshot;
+  }
+
+  /**
+   * 指定したカテゴリ名について、生活費カテゴリの記録の中で最初に登場した時点（＝そのカテゴリの
+   * 起点。通常はシミュレーション開始時点だが、期間の途中から追加されたカテゴリの場合は
+   * その追加された時点）のスナップショットをベースラインとして取得する。
+   * @returns {{amount: number, monthIndex: number}|null}
+   */
+  function findLifeCostBaseline(trial, categoryName) {
+    const history = trial.lifeCostCategoryHistory;
+    if (!history) return null;
+    for (let i = 0; i < history.length; i++) {
+      const found = history[i].categories.find((c) => c.name === categoryName);
+      if (found) return { amount: found.amount, monthIndex: history[i].monthIndex };
+    }
+    return null;
+  }
+
+  /**
+   * 1試行分の「生活費カテゴリ別の内訳」を、指定した月インデックス時点のスナップショットで計算する。
+   * 各カテゴリについて、その時点の月額・起点（初出時点）からの増幅割合（%）・年平均インフレ率
+   * （実績ベース、起点からのCAGR）・生活費全体に占める割合（シェア、%）を返す。
+   * 起点の金額が0円のカテゴリは倍率・年率が定義できないため null になる。
+   * @returns {Array<{name: string, currentAmount: number, growthRatioPercent: number|null,
+   *                   annualizedRatePercent: number|null, sharePercent: number|null}>}
+   */
+  function calculateLifeCostBreakdownAtMonth(trial, monthIndex) {
+    const snapshot = findLifeCostSnapshotAtMonth(trial, monthIndex);
+    if (!snapshot) return [];
+    const total = snapshot.categories.reduce((s, c) => s + c.amount, 0.0);
+
+    return snapshot.categories.map((cat) => {
+      const baseline = findLifeCostBaseline(trial, cat.name);
+      const monthsElapsed = baseline ? snapshot.monthIndex - baseline.monthIndex : 0;
+
+      let growthRatioPercent = null;
+      let annualizedRatePercent = null;
+      if (baseline && baseline.amount > 0) {
+        growthRatioPercent = (cat.amount / baseline.amount - 1.0) * 100;
+        if (monthsElapsed > 0 && cat.amount > 0) {
+          annualizedRatePercent = (Math.pow(cat.amount / baseline.amount, 12.0 / monthsElapsed) - 1.0) * 100;
+        }
+      }
+      const sharePercent = total > 0 ? (cat.amount / total) * 100 : null;
+
+      return {
+        name: cat.name, currentAmount: cat.amount,
+        growthRatioPercent, annualizedRatePercent, sharePercent
+      };
+    });
+  }
+
+  /** 1試行分の、指定した年数N時点（その年の末月）の生活費カテゴリ別内訳を計算する（分岐点分析用） */
+  function calculateLifeCostBreakdownAtYear(trial, yearN) {
+    return calculateLifeCostBreakdownAtMonth(trial, yearN * 12 - 1);
+  }
+
+  /**
+   * 生活費カテゴリ名の一覧を、記録に登場する順で重複なく取得する（CSVヘッダ等での列定義に使用）。
+   * 生活費カテゴリの構成は設定（appData.lifeCostPeriods）に由来し全試行で共通のため、
+   * 1試行分の記録から取得すれば足りる。
+   */
+  function getLifeCostCategoryNames(trial) {
+    const names = [];
+    const seen = {};
+    (trial.lifeCostCategoryHistory || []).forEach((snapshot) => {
+      snapshot.categories.forEach((c) => {
+        if (!seen[c.name]) { seen[c.name] = true; names.push(c.name); }
+      });
+    });
+    return names;
+  }
+
   global.FireBorderline = {
     findBorderlineCases, calculateStockAverageAnnualRates, calculateFxAverageAnnualRates, getLifeCostAtYear,
     calculateCrisisBufferRatio, countBadRegimeYears, countCrisisMonths,
-    getEmergencyLaborIncomeAtYear, sumEmergencyLaborIncomeUpToYear
+    getEmergencyLaborIncomeAtYear, sumEmergencyLaborIncomeUpToYear,
+    calculateLifeCostBreakdownAtMonth, calculateLifeCostBreakdownAtYear, getLifeCostCategoryNames
   };
 })(typeof window !== 'undefined' ? window : globalThis);

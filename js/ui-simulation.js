@@ -328,8 +328,8 @@
         text: '指定した年数の時点で、失敗ケースの中で最も資産が少なかったケース（ギリギリ失敗）と、' +
           '成功ケースの中で最終資産が最も少なかったケース（ギリギリ成功）を抽出し、開始時点から' +
           'その年数までの銘柄別・為替ペア別の平均年率（累積CAGR）と、その時点の月次生活費（インフレ' +
-          '適用後）を比較します。両者の市場推移・生活費の違いから、FIRE成否のボーダーラインとなる' +
-          '市場成長率・インフレの影響度の目安を確認できます。'
+          '適用後・カテゴリ別の内訳を含む）を比較します。両者の市場推移・生活費の違いから、FIRE成否の' +
+          'ボーダーラインとなる市場成長率・インフレの影響度の目安を確認できます。'
       }),
       createElement('div', { class: 'trial-select' }, [select]),
       contentContainer
@@ -411,6 +411,27 @@
       createElement('td', { text: (failureCase && failureBadRegimeYears === null) ? NO_DETAIL_TEXT : (failureBadRegimeYears !== null ? failureBadRegimeYears + '年' : '-') }),
       createElement('td', { text: successBadRegimeYears !== null ? successBadRegimeYears + '年' : '-' })
     ]));
+
+    // 「ギリギリ失敗／ギリギリ成功」それぞれの、その年数時点での生活費カテゴリ別内訳。
+    // インフレの内訳（どの費目が膨らんでいるか）がボーダーラインを分けているかどうかを確認するための行
+    const failureLifeCostBreakdown = failureCase ? FireBorderline.calculateLifeCostBreakdownAtYear(failureCase, yearN) : [];
+    const successLifeCostBreakdown = successCase ? FireBorderline.calculateLifeCostBreakdownAtYear(successCase, yearN) : [];
+    const lifeCostCategoryNames = (failureLifeCostBreakdown.length > 0
+      ? failureLifeCostBreakdown : successLifeCostBreakdown).map((item) => item.name);
+    lifeCostCategoryNames.forEach((name) => {
+      const failureItem = failureLifeCostBreakdown.find((item) => item.name === name);
+      const successItem = successLifeCostBreakdown.find((item) => item.name === name);
+      tbody.appendChild(createElement('tr', {}, [
+        createElement('td', { text: '生活費内訳「' + name + '」月額（' + yearN + '年目時点）' }),
+        createElement('td', { text: failureItem ? formatYen(failureItem.currentAmount) : '-' }),
+        createElement('td', { text: successItem ? formatYen(successItem.currentAmount) : '-' })
+      ]));
+      tbody.appendChild(createElement('tr', {}, [
+        createElement('td', { text: '生活費内訳「' + name + '」生活費内シェア（' + yearN + '年目時点）' }),
+        createElement('td', { text: (failureItem && failureItem.sharePercent !== null) ? formatPercent(failureItem.sharePercent) : '-' }),
+        createElement('td', { text: (successItem && successItem.sharePercent !== null) ? formatPercent(successItem.sharePercent) : '-' })
+      ]));
+    });
 
     /** 銘柄名／通貨ペア名をラベルとして、失敗側・成功側の値を1行分作成する */
     function appendComparisonRow(label, failureRateItem, successRateItem) {
@@ -837,6 +858,7 @@
       }));
       container.appendChild(renderStockCompositionChartPanel(trial, stocks));
       container.appendChild(renderStockAnnualReturnChartPanel(trial));
+      container.appendChild(renderLifeCostBreakdownPanel(trial));
       renderTrialMonthlyTableFull(container, trial, stocks, birthDate, simStartYear, simStartMonth);
 
       const csvBtn = createElement('button', {
@@ -854,6 +876,7 @@
           '（口座別の内訳・保有口数・出費・税金などの詳細データは試行#1と、失敗試行の一部にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で保持件数を増やせます）。'
       }));
       container.appendChild(renderStockAnnualReturnChartPanel(trial));
+      container.appendChild(renderLifeCostBreakdownPanel(trial));
       renderTrialMonthlyTableLight(container, trial, birthDate, simStartYear, simStartMonth);
     }
   }
@@ -1073,6 +1096,54 @@
   }
 
   /**
+   * 「生活費の内訳」パネルを構築する。登録した生活費カテゴリごとに、現在（この試行の最終時点）の
+   * 月額・シミュレーション開始時点からの増幅割合・実績ベースの年平均インフレ率・生活費全体に
+   * 占める割合（シェア）を一覧表示する。trial.lifeCostCategoryHistory（全試行に記録済みの軽量データ、
+   * インフレ発生時・生活費期間切り替え時のみのスナップショット）を使うため、詳細データ（trial.history）
+   * を保持していない試行についても表示できる。
+   */
+  function renderLifeCostBreakdownPanel(trial) {
+    const panel = createElement('div', { class: 'panel' }, [
+      createElement('h2', { text: '生活費の内訳' }),
+      createElement('p', {
+        class: 'desc',
+        text: 'この試行における、生活費カテゴリごとの現在（最終時点）の月額と、シミュレーション開始時点からの' +
+          '変化を一覧表示します。増幅割合・年平均インフレ率は「そのカテゴリが記録上はじめて登場した時点」を' +
+          '起点とした実績値です（開始月額が0円のカテゴリは倍率が定義できないため「-」表示になります）。'
+      })
+    ]);
+
+    // Number.MAX_SAFE_INTEGERを指定し、記録済みスナップショットのうち最後（＝この試行の最終時点）を採用する
+    const breakdown = FireBorderline.calculateLifeCostBreakdownAtMonth(trial, Number.MAX_SAFE_INTEGER);
+    if (breakdown.length === 0) {
+      panel.appendChild(createElement('p', { class: 'desc', text: '表示できる生活費データがありません。' }));
+      return panel;
+    }
+
+    const table = createElement('table', { class: 'data-table' });
+    table.appendChild(createElement('thead', {}, [
+      createElement('tr', {}, [
+        '項目', '現在の月額', 'スタート時からの増幅割合', '年平均インフレ率（実績）', '生活費内シェア'
+      ].map((h) => createElement('th', { text: h })))
+    ]));
+
+    const tbody = createElement('tbody');
+    breakdown.forEach((item) => {
+      tbody.appendChild(createElement('tr', {}, [
+        createElement('td', { text: item.name }),
+        createElement('td', { text: formatYen(item.currentAmount) }),
+        createElement('td', { text: item.growthRatioPercent !== null ? formatPercent(item.growthRatioPercent) : '-' }),
+        createElement('td', { text: item.annualizedRatePercent !== null ? formatPercent(item.annualizedRatePercent) : '-' }),
+        createElement('td', { text: item.sharePercent !== null ? formatPercent(item.sharePercent) : '-' })
+      ]));
+    });
+    table.appendChild(tbody);
+    panel.appendChild(createElement('div', { class: 'table-scroll' }, [table]));
+
+    return panel;
+  }
+
+  /**
    * 内訳データ（history）を持つ試行の毎月データを、全期間分・省略なしで表形式表示する。
    * 各行はクリック可能にし、クリックするとその月の各口座・銘柄の内訳を別ウィンドウで表示する。
    */
@@ -1103,7 +1174,7 @@
       tbody.appendChild(createElement('tr', {
         style: 'cursor:pointer;',
         title: 'クリックすると、この月の各口座・銘柄の内訳を別ウィンドウで表示します',
-        onclick: () => openMonthDetailWindow(trial, record, stocks)
+        onclick: () => openMonthDetailWindow(trial, record, stocks, monthIndex)
       }, [
         createElement('td', { text: record.yearMonth }),
         createElement('td', { text: formatAgeAtMonthIndex(birthDate, simStartYear, simStartMonth, monthIndex) }),
@@ -1295,8 +1366,33 @@
       '<tbody>' + bodyRows + '</tbody></table></div>';
   }
 
+  /**
+   * 生活費内訳セクションのHTML断片を組み立てる。
+   * その年月時点で適用されている各生活費カテゴリの、月額・スタート時からの増幅割合・
+   * 年平均インフレ率（実績）・生活費内シェアを表示する（対象がない場合は空文字を返す）。
+   */
+  function buildLifeCostBreakdownSectionHtml(lifeCostRows) {
+    if (lifeCostRows.length === 0) return '';
+    const headerCells = ['項目', '月額', '増幅割合(スタート比)', '年平均インフレ率(実績)', '生活費内シェア']
+      .map((h) => '<th>' + h + '</th>').join('');
+
+    const bodyRows = lifeCostRows.map((row) => {
+      return '<tr>' +
+        '<td>' + escapeHtmlText(row.name) + '</td>' +
+        '<td>' + escapeHtmlText(formatYen(row.currentAmount)) + '</td>' +
+        '<td>' + (row.growthRatioPercent !== null ? escapeHtmlText(formatPercent(row.growthRatioPercent)) : '-') + '</td>' +
+        '<td>' + (row.annualizedRatePercent !== null ? escapeHtmlText(formatPercent(row.annualizedRatePercent)) : '-') + '</td>' +
+        '<td>' + (row.sharePercent !== null ? escapeHtmlText(formatPercent(row.sharePercent)) : '-') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<h3 style="font-size:14px;margin:16px 0 8px;">生活費の状態</h3>' +
+      '<div class="table-scroll"><table class="data-table"><thead><tr>' + headerCells + '</tr></thead>' +
+      '<tbody>' + bodyRows + '</tbody></table></div>';
+  }
+
   /** 別ウィンドウ全体（HTML文書）を組み立てる。このアプリと同じスタイルシート（css/style.css）を読み込み、見た目を統一する */
-  function buildMonthDetailHtml(trial, record, fxRows, stockRows) {
+  function buildMonthDetailHtml(trial, record, fxRows, stockRows, lifeCostRows) {
     const title = '試行#' + trial.trialId + ' ' + record.yearMonth + ' の内訳';
     return '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">' +
       '<title>' + escapeHtmlText(title) + '</title>' +
@@ -1307,6 +1403,7 @@
       buildFxSummarySectionHtml(fxRows) +
       buildCashAndBondSectionHtml(record) +
       buildStockBreakdownSectionHtml(stockRows) +
+      buildLifeCostBreakdownSectionHtml(lifeCostRows) +
       '</div></main></body></html>';
   }
 
@@ -1317,11 +1414,17 @@
 
   /**
    * 毎月データテーブルの1行がクリックされたときに呼ばれる。その月の為替レート・各口座銘柄の
-   * 内訳を、このアプリとは別のブラウザウィンドウに表示する。ウィンドウは固定名で開くため、
-   * 何度クリックしても同じ1つのウィンドウの中身が更新される。
+   * 内訳・生活費の状態を、このアプリとは別のブラウザウィンドウに表示する。ウィンドウは固定名で
+   * 開くため、何度クリックしても同じ1つのウィンドウの中身が更新される。
    * ポップアップがブロックされた場合は、その旨をトーストで案内する。
+   *
+   * 生活費の状態は、生活費カテゴリの記録（trial.lifeCostCategoryHistory、年1回・期間切り替え時
+   * のみのスナップショット）から、指定した月インデックス（monthIndex）の時点で適用されている
+   * 内訳をcarry-forwardで計算する（FireBorderline.calculateLifeCostBreakdownAtMonth）。
+   * 月次で毎回記録しなくても、当該年月がどの生活費を適用しているかは計算で求められるため、
+   * 追加のデータ記録は不要。
    */
-  function openMonthDetailWindow(trial, record, stocks) {
+  function openMonthDetailWindow(trial, record, stocks, monthIndex) {
     const newWindow = window.open('', MONTH_DETAIL_WINDOW_NAME, 'width=860,height=760');
     if (!newWindow) {
       showToast('ポップアップがブロックされました。ブラウザの設定でこのサイトのポップアップを許可してください。', 4000);
@@ -1330,7 +1433,8 @@
 
     const fxRows = buildFxSummaryRows(trial, record);
     const stockRows = buildStockBreakdownRows(record, stocks);
-    const html = buildMonthDetailHtml(trial, record, fxRows, stockRows);
+    const lifeCostRows = FireBorderline.calculateLifeCostBreakdownAtMonth(trial, monthIndex);
+    const html = buildMonthDetailHtml(trial, record, fxRows, stockRows, lifeCostRows);
 
     newWindow.document.open();
     newWindow.document.write(html);

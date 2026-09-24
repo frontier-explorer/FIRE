@@ -1181,6 +1181,19 @@
   }
 
   /**
+   * 生活費カテゴリの内訳スナップショット（「銘柄別 年利の推移」記録の生活費版）。
+   * 現在有効なカテゴリの名称・金額だけを抜き出した軽量な配列を返す。
+   * インフレ（各カテゴリの複利成長）は年1回・生活費期間の切り替え時にしか発生しないため、
+   * この関数は「値が変化した月」だけ呼び出せばよく、月次で毎回記録する必要はない
+   * （＝全試行分を記録してもデータ量は小さく済む）。
+   */
+  function snapshotActiveLifeCostCategories(categoryStates, simCurrentYearMonth) {
+    return categoryStates
+      .filter((state) => isLifeCostCategoryActive(state, simCurrentYearMonth))
+      .map((state) => ({ name: state.name, amount: state.amount }));
+  }
+
+  /**
    * 毎年1月に、まだ終了年月に達していない各カテゴリの金額へ、そのカテゴリ自身の
    * インフレ率（＋マクロ経済レジームによる加算分）で複利計算を適用する。
    * カテゴリごとに個別のインフレ率を保つことで、一部のカテゴリが終了しても
@@ -1404,6 +1417,16 @@
     // 0ヶ月目（シミュレーション開始・変動前）の為替レートを先頭に記録しておく
     fxPairNames.forEach((pair) => { monthlyFxRates[pair] = [currentExchangeRates[pair]]; });
 
+    // ---- 「生活費の内訳（カテゴリ別）」の全試行分・記録 ----
+    // FIRE成否に関わらず全試行について、生活費カテゴリごとの金額推移を保持する。
+    // 値が変化するのは「年1回のインフレ適用時」と「生活費期間の切り替え時」のみのため、
+    // 変化があった月だけスナップショットを積めば十分であり、月次記録に比べてデータ量は
+    // 大幅に小さく済む（試行数×期間年数 程度の件数）。
+    // 0ヶ月目（シミュレーション開始・インフレ適用前）の内訳を先頭に記録しておく
+    const lifeCostCategoryHistory = [
+      { monthIndex: 0, categories: snapshotActiveLifeCostCategories(currentCategoryStates, simStartYearMonthStr) }
+    ];
+
     for (let monthIndex = 0; monthIndex < totalPeriods; monthIndex++) {
       const yearMonthStr = Math.floor(monthIndex / 12) + '年' + ((monthIndex % 12) + 1) + '月';
       jgbCouponThisMonth = 0.0;
@@ -1448,6 +1471,15 @@
       // 期間切り替え・年次インフレ適用の有無に関わらず毎月必ず再計算することで、
       // カテゴリが終了年月に到達した月から即座に合計額から除かれるようにする。
       currentMonthlyLifeCost = sumActiveLifeCost(currentCategoryStates, simCurrentYearMonth);
+
+      // 生活費の内訳（カテゴリ別）を記録する。0ヶ月目は既にループ突入前に記録済みのため、
+      // ここでは「年次インフレ適用があった月」または「生活費期間が切り替わった月」だけ記録する
+      if (monthIndex > 0 && (lifeCostReset || monthIndex % 12 === 0)) {
+        lifeCostCategoryHistory.push({
+          monthIndex,
+          categories: snapshotActiveLifeCostCategories(currentCategoryStates, simCurrentYearMonth)
+        });
+      }
 
       // ---- iDeCo・退職金の一括受給イベント ----
       let taxPayment = 0.0;
@@ -1796,7 +1828,7 @@
     return {
       trialId, success: !fireFailure, failureMonth: fireFailure ? failureMonth : totalPeriods,
       history: history || [], lightHistory, anomalyYearlySeries,
-      monthlyStockRates, monthlyFxRates
+      monthlyStockRates, monthlyFxRates, lifeCostCategoryHistory
     };
   }
 
