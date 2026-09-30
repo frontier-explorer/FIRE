@@ -162,18 +162,32 @@
   }
 
   /**
-   * 「分岐点分析用サマリーCSV」のヘッダ行を生成する（1試行=1行、銘柄・為替ペアは可変列）。
-   * CRISIS滞在月数・悪性レジーム発生年数は詳細データ（history）を保持していない試行では
-   * 計算できないため、該当セルは空欄になる（試行番号・最終結果等の他の列は通常通り出力される）。
+   * 「分岐点分析用サマリーCSV」のヘッダ行を生成する（1試行=1行、銘柄・為替ペア・大きな出費は可変列）。
+   * A〜Eの各指標はすべてlightHistory（全試行に記録済みの軽量データ）から計算できるため、
+   * 詳細データ（history）を保持していない試行（成功ケースの大半等）でも空欄にならない。
    */
-  function buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, yearN) {
+  function buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, bigExpenseNames, yearN) {
     const fixedColumns = [
       '試行番号', '最終結果', '破綻月Index', '最終総資産額',
       yearN + '年目時点_月次生活費（インフレ適用後）',
       yearN + '年目時点_緊急労働月収（円）',
       yearN + '年目までの緊急労働収入累計（円）',
-      yearN + '年目時点_CRISIS滞在月数（詳細データがない試行は空欄）',
-      yearN + '年目までの悪性レジーム(TIGHTENING/STAGFLATION)発生年数（詳細データがない試行は空欄）'
+      yearN + '年目時点_CRISIS滞在月数',
+      yearN + '年目までの悪性レジーム(TIGHTENING/STAGFLATION)発生年数',
+      // ---- A. N年目時点の資産状況 ----
+      yearN + '年目時点_総資産（円）',
+      yearN + '年目時点_破綻済みフラグ',
+      yearN + '年目時点_資産内訳_現金（円）',
+      yearN + '年目時点_資産内訳_国債バッファ（円）',
+      yearN + '年目時点_資産内訳_投資資産(iDeCo除く)（円）',
+      yearN + '年目時点_資産内訳_iDeCo（円）',
+      yearN + '年目時点_総資産（インフレ調整後、開始時点の円）',
+      // ---- B. 資産の推移を表す列 ----
+      yearN + '年目までの最大総資産（円）',
+      '最大総資産となった年',
+      yearN + '年目時点_最大総資産からの下落率%',
+      yearN + '年目までの最大下落率%',
+      yearN + '年目時点_取り崩し率%'
     ];
     const stockColumns = baseNames.map((name) => name + '_累積CAGR(' + yearN + '年目まで)%');
     const fxColumns = fxPairs.map((pair) => pair + '_累積CAGR(' + yearN + '年目まで)%');
@@ -186,11 +200,20 @@
         '生活費【' + name + '】_生活費内シェア%'
       );
     });
-    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns).map(escapeCsvField).join(',');
+    // ---- C. 大きな支出の前後（N年目とは無関係に固定列） ----
+    const bigExpenseColumns = [];
+    bigExpenseNames.forEach((name) => {
+      bigExpenseColumns.push('【' + name + '】_直前月末の総資産（円）', '【' + name + '】_直後月末の総資産（円）');
+    });
+    // ---- E. 再現性のための情報 ----
+    const seedColumns = ['乱数シード'];
+
+    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns, bigExpenseColumns, seedColumns)
+      .map(escapeCsvField).join(',');
   }
 
   /** 「分岐点分析用サマリーCSV」の1試行分のデータ行を生成する */
-  function buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames) {
+  function buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames, bigExpenseList, randomSeedUsed) {
     const stockRates = global.FireBorderline.calculateStockAverageAnnualRates(result, yearN);
     const fxRates = global.FireBorderline.calculateFxAverageAnnualRates(result, yearN);
     const lifeCost = global.FireBorderline.getLifeCostAtYear(result, yearN);
@@ -199,6 +222,11 @@
     const emergencyLaborIncomeTotal = global.FireBorderline.sumEmergencyLaborIncomeUpToYear(result, yearN);
     const crisisMonths = global.FireBorderline.countCrisisMonths(result, yearN);
     const badRegimeYears = global.FireBorderline.countBadRegimeYears(result, yearN);
+    const assetBreakdown = global.FireBorderline.getAssetBreakdownAtYear(result, yearN);
+    const realAsset = global.FireBorderline.getRealAssetAtYear(result, yearN);
+    const peakAndDrawdown = global.FireBorderline.getAssetPeakAndDrawdownAtYear(result, yearN);
+    const withdrawalRate = global.FireBorderline.getWithdrawalRateAtYear(result, yearN);
+    const bigExpenseSnapshots = global.FireBorderline.getBigExpenseAssetSnapshots(result, bigExpenseList);
     const finalRecord = result.lightHistory[result.lightHistory.length - 1];
 
     const fixedValues = [
@@ -210,7 +238,21 @@
       emergencyLaborIncomeAtYear !== null ? Math.trunc(emergencyLaborIncomeAtYear) : '',
       emergencyLaborIncomeTotal !== null ? Math.trunc(emergencyLaborIncomeTotal) : '',
       crisisMonths !== null ? crisisMonths : '',
-      badRegimeYears !== null ? badRegimeYears : ''
+      badRegimeYears !== null ? badRegimeYears : '',
+      // ---- A. N年目時点の資産状況 ----
+      assetBreakdown ? Math.trunc(assetBreakdown.totalAsset) : '',
+      assetBreakdown ? (assetBreakdown.isFailureAtYear ? 1 : 0) : '',
+      assetBreakdown ? Math.trunc(assetBreakdown.cash) : '',
+      assetBreakdown ? Math.trunc(assetBreakdown.jgbBufferValue) : '',
+      assetBreakdown ? Math.trunc(assetBreakdown.investmentAssetsExIdeco) : '',
+      assetBreakdown ? Math.trunc(assetBreakdown.idecoValue) : '',
+      realAsset !== null ? Math.trunc(realAsset) : '',
+      // ---- B. 資産の推移を表す列 ----
+      peakAndDrawdown ? Math.trunc(peakAndDrawdown.peakAsset) : '',
+      peakAndDrawdown ? peakAndDrawdown.peakYear : '',
+      peakAndDrawdown ? peakAndDrawdown.drawdownFromPeakPercent.toFixed(4) : '',
+      peakAndDrawdown ? peakAndDrawdown.maxDrawdownPercent.toFixed(4) : '',
+      withdrawalRate !== null ? withdrawalRate.toFixed(4) : ''
     ];
 
     const stockValues = baseNames.map((name) => {
@@ -231,27 +273,58 @@
         (item && item.sharePercent !== null) ? item.sharePercent.toFixed(4) : ''
       );
     });
+    const bigExpenseValues = [];
+    bigExpenseSnapshots.forEach((snap) => {
+      bigExpenseValues.push(
+        snap.before !== null ? Math.trunc(snap.before) : '',
+        snap.after !== null ? Math.trunc(snap.after) : ''
+      );
+    });
+    const seedValues = [randomSeedUsed !== undefined && randomSeedUsed !== null ? randomSeedUsed : ''];
 
-    return fixedValues.concat(stockValues, fxValues, lifeCostValues).map(escapeCsvField).join(',');
+    return fixedValues.concat(stockValues, fxValues, lifeCostValues, bigExpenseValues, seedValues)
+      .map(escapeCsvField).join(',');
+  }
+
+  /**
+   * 「大きな出費（bigExpense）」の列名一覧を、同じ説明文が複数あっても列名が重複しないように
+   * 補正して返す（CSVヘッダの重複防止）。
+   */
+  function buildBigExpenseColumnNames(bigExpenseList) {
+    const seenCount = {};
+    return (bigExpenseList || []).map((expense) => {
+      const base = expense.description || '大きな出費';
+      seenCount[base] = (seenCount[base] || 0) + 1;
+      return seenCount[base] === 1 ? base : base + '(' + seenCount[base] + ')';
+    });
   }
 
   /**
    * 「分岐点分析用サマリーCSV」を書き出す（全試行・成功失敗問わず、1試行=1行）。
-   * 累積CAGR（銘柄別・為替ペア別）・月次生活費は全試行分の軽量記録から取得できるが、
-   * CRISIS滞在月数・悪性レジーム発生年数は詳細データ保持試行のみ値が入り、それ以外は空欄になる。
+   * A〜Eの指標（N年目時点の資産内訳・推移・レジーム状況・大きな出費前後の資産・乱数シード）は
+   * すべて全試行分の軽量記録（lightHistory）から算出されるため、詳細データを保持していない
+   * 試行（成功ケースの大半等）でも空欄にならない。
    * @param {Array} results シミュレーション結果（全試行）
    * @param {number} yearN 分岐点分析の基準年数（1以上の整数）
+   * @param {Array<{description:string, month:number}>} bigExpenseList appData.bigExpenseの設定
    */
-  function exportBreakpointAnalysis(results, yearN) {
+  function exportBreakpointAnalysis(results, yearN, bigExpenseList) {
     if (!results || results.length === 0) {
       return { success: false, message: '出力対象の試行がありません。' };
     }
     const baseNames = Object.keys(results[0].monthlyStockRates || {});
     const fxPairs = Object.keys(results[0].monthlyFxRates || {});
     const lifeCostNames = global.FireBorderline.getLifeCostCategoryNames(results[0]);
-    const lines = [buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, yearN)];
+    const bigExpenseNames = buildBigExpenseColumnNames(bigExpenseList);
+    // 列名の対応付けにはbigExpenseNames（重複補正済み）を使うため、月インデックス等の
+    // 元データと組み合わせた配列を作り直しておく
+    const bigExpenseForColumns = (bigExpenseList || []).map((expense, i) => ({
+      description: bigExpenseNames[i], month: expense.month
+    }));
+    const randomSeedUsed = results.randomSeedUsed;
+    const lines = [buildBreakpointHeaderRow(baseNames, fxPairs, lifeCostNames, bigExpenseNames, yearN)];
     results.forEach((result) => {
-      lines.push(buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames));
+      lines.push(buildBreakpointDataRow(result, yearN, baseNames, fxPairs, lifeCostNames, bigExpenseForColumns, randomSeedUsed));
     });
     const fileName = 'FIRE_分岐点分析_' + yearN + '年目_' + formatTimestamp(new Date()) + '.csv';
     downloadCsv(fileName, lines.join('\r\n'));

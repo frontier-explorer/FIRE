@@ -61,7 +61,7 @@
    */
   function createDefaultAppData() {
     return {
-      config: { period: 74, times: 200, birthDate: '2000-01-01', cash: 1000000, failureDetailLimit: 50 },
+      config: { period: 74, times: 200, birthDate: '2000-01-01', cash: 1000000, failureDetailLimit: 50, randomSeed: null },
       stocks: [
         // 【特定口座】SlimSP500 — 売却優先度①（即課税）
         // 7,317,073口 × 41,000円 ÷ 10,000 ≒ 3,000万円
@@ -187,7 +187,7 @@
    */
   function createBlankAppData() {
     return {
-      config: { period: 30, times: 200, birthDate: '', cash: 0, failureDetailLimit: 50 },
+      config: { period: 30, times: 200, birthDate: '', cash: 0, failureDetailLimit: 50, randomSeed: null },
       stocks: [],
       soukan: [],
       tuika: [],

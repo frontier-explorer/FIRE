@@ -194,7 +194,7 @@
     container.appendChild(renderBorderlineComparisonPanel(appData, results));
     container.appendChild(renderLifeCostTablePanel(filteredResults));
     container.appendChild(renderFanChartPanel(filteredResults));
-    container.appendChild(renderCsvExportPanel(results, appData.stocks, appData.config.period));
+    container.appendChild(renderCsvExportPanel(results, appData.stocks, appData.config.period, appData.bigExpense));
 
     // 毎月データテーブルの「年齢」列表示用: シミュレーション開始年月（エンジン側と同様に
     // 実行時点の実際の年月を開始とみなす）と、生年月日（未設定なら年齢列は「-」表示になる）
@@ -584,7 +584,7 @@
   }
 
   /** CSV出力パネルを描画する */
-  function renderCsvExportPanel(results, stocks, simulationPeriodYears) {
+  function renderCsvExportPanel(results, stocks, simulationPeriodYears, bigExpenseList) {
     const panel = createElement('div', { class: 'panel' }, [
       createElement('h2', { text: 'CSV出力' }),
       createElement('p', { class: 'desc', text: '月次の詳細データ（銘柄別内訳・為替レート等）をCSVファイルとして書き出します。詳細データは試行#1と、失敗試行の先頭（設定した保存上限件数）のみ保持されています。' })
@@ -619,7 +619,7 @@
         let yearN = parseInt(breakpointYearInput.value, 10);
         if (!Number.isInteger(yearN) || yearN < 1) yearN = 1;
         if (yearN > maxYear) yearN = maxYear;
-        const r = FireCsv.exportBreakpointAnalysis(results, yearN);
+        const r = FireCsv.exportBreakpointAnalysis(results, yearN, bigExpenseList);
         showToast(r.success ? (r.rowCount + '行を出力しました') : r.message, 4000);
       }
     });
@@ -628,10 +628,15 @@
     ]));
     panel.appendChild(createElement('p', {
       class: 'desc',
-      text: '全試行（成功・失敗問わず）を1試行=1行で出力し、指定したN年目時点の累積CAGR（銘柄別・為替ペア別）・' +
-        '月次生活費・バッファCRISIS滞在月数・悪性レジーム発生年数をまとめます。表計算ソフトでの散布図作成など、' +
-        '試行横断の統計分析に利用できます。CRISIS滞在月数・悪性レジーム発生年数は、詳細データを保持していない試行' +
-        '（先頭以外の成功ケースや、失敗詳細保存上限を超えた失敗ケース）では空欄になります。'
+      text: '全試行（成功・失敗問わず）を1試行=1行で出力し、指定したN年目時点の資産内訳・最大資産・下落率・' +
+        '取り崩し率・累積CAGR（銘柄別・為替ペア別）・月次生活費・CRISIS滞在月数・悪性レジーム発生年数・' +
+        '大きな出費前後の資産をまとめます。表計算ソフトでの散布図作成など、試行横断の統計分析に利用できます。'
+    }));
+    panel.appendChild(createElement('p', {
+      class: 'desc',
+      text: '使用した乱数シード: ' + (results.randomSeedUsed !== undefined ? results.randomSeedUsed : '(不明)') +
+        '　※同じシードで再実行したい場合は、基本設定タブの「乱数シード」欄にこの値を入力してください。' +
+        '空欄のまま実行すれば、次回は新しい独立した乱数列で試行されます。'
     }));
     return panel;
   }

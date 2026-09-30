@@ -135,13 +135,16 @@
     const panel = createElement('div', { class: 'panel' }, [
       createElement('h2', { text: '基本設定' }),
       createElement('p', { class: 'desc', text: 'シミュレーションの期間・試行回数・初期現金など、全体に関わる設定を行います。' }),
+      createElement('p', { class: 'desc', text: '乱数シードを指定すると、同じシード値・同じ設定であれば毎回同じ乱数列で再現できます（検証・比較用）。空欄のまま実行すると、実行のたびに新しいシードで独立に試行されます（通常のモンテカルロ・シミュレーションはこちらを推奨します）。実際に使用したシードはこの欄には書き戻されません（結果画面に表示されるので、再現したい場合はその値をここに手動で入力してください）。' }),
       createElement('div', { class: 'form-grid' }, [
         createNumberField('シミュレーション期間（年）', c.period, 1, (v) => { c.period = Math.round(v); onChange(); }),
         createNumberField('試行回数（モンテカルロ試行数）', c.times, 1, (v) => { c.times = Math.round(v); onChange(); }),
         createDateField('生年月日', c.birthDate, (v) => { c.birthDate = v; onChange(); }),
         createNumberField('初期現金（円）', c.cash, 1000, (v) => { c.cash = Math.round(v); onChange(); }),
         createNumberField('失敗試行の詳細保存上限（0〜200）', c.failureDetailLimit, 1,
-          (v) => { c.failureDetailLimit = Math.min(Math.max(Math.round(v), 0), 200); onChange(); })
+          (v) => { c.failureDetailLimit = Math.min(Math.max(Math.round(v), 0), 200); onChange(); }),
+        createTextField('乱数シード（空欄で完全ランダム。値を指定すれば出費・収入のみ変化させて同じシミュレーションを検証可能。）', c.randomSeed === null || c.randomSeed === undefined ? '' : String(c.randomSeed),
+          (v) => { c.randomSeed = v.trim() === '' ? null : v.trim(); onChange(); })
       ])
     ]);
     container.appendChild(panel);

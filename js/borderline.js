@@ -168,42 +168,28 @@
 
   /**
    * 1試行分の、開始時点からN年目までの「バッファCRISIS滞在月数」を計算する（分岐点分析用CSV向け）。
-   * calculateCrisisBufferRatioと計算対象は同じだが、割合(%)ではなく月数そのものを返す。
-   * 詳細データ（history）を保持していない試行では null を返す。
-   * @returns {number|null}
+   * lightHistory（全試行に記録済みの軽量データ）に月次ループ内で積み上げた累積カウンタ
+   * （crisisMonthsCumulative）をそのまま使うため、詳細データ（history）を保持していない
+   * 試行（成功ケースの大半等）でも取得できる。
+   * @returns {number|null} 指定年数までの記録がない試行の場合はnull
    */
   function countCrisisMonths(trial, yearN) {
-    if (!trial.history || trial.history.length === 0) return null;
-    const monthCount = yearN * 12;
-    const usedMonths = Math.min(monthCount, trial.history.length);
-    if (usedMonths <= 0) return null;
-    let crisisMonths = 0;
-    for (let m = 0; m < usedMonths; m++) {
-      if (trial.history[m].effectiveMode === 'CRISIS') crisisMonths++;
-    }
-    return crisisMonths;
+    const monthIndexAtYearN = yearN * 12 - 1;
+    const record = trial.lightHistory[monthIndexAtYearN];
+    return record ? record.crisisMonthsCumulative : null;
   }
 
   /**
    * 1試行分の、開始時点からN年目までに「悪性レジーム（TIGHTENING または STAGFLATION）」に
    * 該当した年数（12ヶ月区切り、1ヶ月でも該当すればその1年をカウント）を数える。
-   * regimeも詳細データ（history）にのみ記録されているため、calculateCrisisBufferRatioと
-   * 同様、詳細を保持していない試行では null を返す。
-   * @returns {number|null}
+   * lightHistoryに積み上げた累積カウンタ（badRegimeYearsCumulative）をそのまま使うため、
+   * 詳細データ（history）を保持していない試行でも取得できる。
+   * @returns {number|null} 指定年数までの記録がない試行の場合はnull
    */
   function countBadRegimeYears(trial, yearN) {
-    if (!trial.history || trial.history.length === 0) return null;
-    const monthCount = yearN * 12;
-    const usedMonths = Math.min(monthCount, trial.history.length);
-    if (usedMonths <= 0) return null;
-    const badRegimeYearSet = new Set();
-    for (let m = 0; m < usedMonths; m++) {
-      const regime = trial.history[m].regime;
-      if (regime === 'TIGHTENING' || regime === 'STAGFLATION') {
-        badRegimeYearSet.add(Math.floor(m / 12));
-      }
-    }
-    return badRegimeYearSet.size;
+    const monthIndexAtYearN = yearN * 12 - 1;
+    const record = trial.lightHistory[monthIndexAtYearN];
+    return record ? record.badRegimeYearsCumulative : null;
   }
 
   /**
@@ -293,10 +279,112 @@
     return names;
   }
 
+  /**
+   * 1試行分の、指定した年数N時点（その年の末月）における資産内訳を取得する。
+   * lightHistory（全試行に記録済みの軽量データ）だけで計算できるため、詳細データ（history）を
+   * 保持していない試行でも取得できる。
+   * 現金＋国債バッファ＋投資資産(iDeCo除く)＋iDeCo＝総資産　となるよう、iDeCoの二重計上を避けている
+   * （lightHistory.investmentAssetsはiDeCoを含む投資資産全体の評価額のため、ここから差し引く）。
+   * @returns {{totalAsset:number, isFailureAtYear:boolean, cash:number, jgbBufferValue:number,
+   *            investmentAssetsExIdeco:number, idecoValue:number}|null} 記録がない場合はnull
+   */
+  function getAssetBreakdownAtYear(trial, yearN) {
+    const monthIndexAtYearN = yearN * 12 - 1;
+    const record = trial.lightHistory[monthIndexAtYearN];
+    if (!record) return null;
+    return {
+      totalAsset: record.totalAsset,
+      isFailureAtYear: record.isFailure,
+      cash: record.cash,
+      jgbBufferValue: record.jgbBufferValue,
+      investmentAssetsExIdeco: record.investmentAssets - record.idecoValue,
+      idecoValue: record.idecoValue
+    };
+  }
+
+  /**
+   * 1試行分の、指定した年数N時点における総資産を、開始時点の購買力（円）に換算した
+   * 「実質総資産」を計算する。
+   * インフレの影響度は生活費のカテゴリ構成によって人それぞれ異なるため、単一の「総合CPI」を
+   * 仮定せず、実際に記録されている「月次生活費（カテゴリ構成を反映した実額）」の
+   * 開始時点比を購買力の目減り率とみなすデフレーターとして用いる。
+   * @returns {number|null} 起点または指定年数の生活費が0円、あるいは記録がない場合はnull
+   */
+  function getRealAssetAtYear(trial, yearN) {
+    const startRecord = trial.lightHistory[0];
+    const record = trial.lightHistory[yearN * 12 - 1];
+    if (!startRecord || !record) return null;
+    if (!(startRecord.monthlyLifeCost > 0) || !(record.monthlyLifeCost > 0)) return null;
+    const deflator = record.monthlyLifeCost / startRecord.monthlyLifeCost;
+    return record.totalAsset / deflator;
+  }
+
+  /**
+   * 1試行分の、開始時点からN年目までの資産推移指標（最大総資産・到達年・下落率・
+   * 最大ドローダウン）を取得する。lightHistoryに月次ループ内で積み上げた累積値
+   * （peakAssetSoFar等）をそのまま使うため、詳細データを保持していない試行でも取得できる。
+   * @returns {{peakAsset:number, peakYear:number, drawdownFromPeakPercent:number,
+   *            maxDrawdownPercent:number}|null} 記録がない場合はnull。
+   *   peakYearは高値到達年（開始時点＝0年目がそのまま高値の場合は0）
+   */
+  function getAssetPeakAndDrawdownAtYear(trial, yearN) {
+    const record = trial.lightHistory[yearN * 12 - 1];
+    if (!record) return null;
+    const peakYear = record.peakMonthIndexSoFar >= 0 ? Math.floor(record.peakMonthIndexSoFar / 12) + 1 : 0;
+    const drawdownFromPeakPercent = record.peakAssetSoFar > 0
+      ? ((record.peakAssetSoFar - record.totalAsset) / record.peakAssetSoFar) * 100.0
+      : 0.0;
+    return {
+      peakAsset: record.peakAssetSoFar,
+      peakYear,
+      drawdownFromPeakPercent,
+      maxDrawdownPercent: record.maxDrawdownSoFar
+    };
+  }
+
+  /**
+   * 1試行分の、指定した年数N時点における取り崩し率（%）を計算する。
+   * 定義は「破綻回避のための緊急労働」機能の発動条件と同じ
+   * （年間生活費（大きな出費は含めない）÷ N年目時点の総資産 × 100）に揃えている。
+   * @returns {number|null} 記録がない場合、または既に破綻して総資産が0円の場合はnull
+   *   （取り崩し率という指標自体が意味をなさないため）
+   */
+  function getWithdrawalRateAtYear(trial, yearN) {
+    const record = trial.lightHistory[yearN * 12 - 1];
+    if (!record || !(record.totalAsset > 0)) return null;
+    return ((record.monthlyLifeCost * 12.0) / record.totalAsset) * 100.0;
+  }
+
+  /**
+   * 1試行分について、設定されている「大きな出費（bigExpense）」ごとに、その月の直前月末・
+   * 直後月末の総資産（円）を取得する。bigExpenseは特定の月に発生する固定イベントのため、
+   * 列自体はN年目の指定とは無関係に固定となる。
+   * 【注意】月次粒度の記録しかないため、「直後」はその月に発生した他の収支
+   * （生活費・収入・積立等）もすべて反映された後の月末残高であり、その出費だけを
+   * 厳密に分離した値ではない。破綻済みの月はlightHistory側の仕様通り0円になる。
+   * @param {Object} trial 1試行分の結果
+   * @param {Array<{description:string, month:number}>} bigExpenseList appData.bigExpenseの設定
+   * @returns {Array<{description:string, month:number, before:number|null, after:number|null}>}
+   */
+  function getBigExpenseAssetSnapshots(trial, bigExpenseList) {
+    return (bigExpenseList || []).map((expense) => {
+      const beforeRecord = expense.month - 1 >= 0 ? trial.lightHistory[expense.month - 1] : null;
+      const afterRecord = trial.lightHistory[expense.month];
+      return {
+        description: expense.description,
+        month: expense.month,
+        before: beforeRecord ? beforeRecord.totalAsset : null,
+        after: afterRecord ? afterRecord.totalAsset : null
+      };
+    });
+  }
+
   global.FireBorderline = {
     findBorderlineCases, calculateStockAverageAnnualRates, calculateFxAverageAnnualRates, getLifeCostAtYear,
     calculateCrisisBufferRatio, countBadRegimeYears, countCrisisMonths,
     getEmergencyLaborIncomeAtYear, sumEmergencyLaborIncomeUpToYear,
-    calculateLifeCostBreakdownAtMonth, calculateLifeCostBreakdownAtYear, getLifeCostCategoryNames
+    calculateLifeCostBreakdownAtMonth, calculateLifeCostBreakdownAtYear, getLifeCostCategoryNames,
+    getAssetBreakdownAtYear, getRealAssetAtYear, getAssetPeakAndDrawdownAtYear,
+    getWithdrawalRateAtYear, getBigExpenseAssetSnapshots
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -85,11 +85,64 @@
     return l;
   }
 
+  // ---- シード可能な乱数生成器（再現性のある検証用） ----
+  // シミュレーション内で使う唯一の乱数源。デフォルトはMath.random（従来通り非決定的）。
+  // runSimulation系の関数が開始時にresolveAndApplySeed()でこれを差し替えることで、
+  // 同じシード値を指定すれば毎回まったく同じ結果を再現できるようにする。
+  let currentRandomFn = Math.random;
+
+  /**
+   * mulberry32アルゴリズムによるシード可能な疑似乱数生成器を作る。
+   * 呼び出すたびに0以上1未満の浮動小数点数を返す関数を返す。
+   */
+  function createSeededRandom(seed) {
+    let state = seed >>> 0;
+    return function () {
+      state = (state + 0x6D2B79F5) | 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** 数値／文字列いずれのシード指定も、32bit符号なし整数へ正規化する */
+  function normalizeSeed(seedInput) {
+    if (typeof seedInput === 'number' && isFinite(seedInput)) return Math.floor(seedInput) >>> 0;
+    const str = String(seedInput || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
+    }
+    return hash >>> 0;
+  }
+
+  /**
+   * config.randomSeed が指定されていればそのシードで、未指定（空欄）ならランダムに
+   * 生成したシードで乱数生成器を初期化する。
+   * 【重要】configオブジェクトへは書き戻さない（空欄のまま維持する）。もし書き戻すと、
+   * 「空欄なら毎回自動生成」のはずが最初の1回で欄が埋まってしまい、以降ずっと同じシードが
+   * 使われ続けてしまう（＝2回目以降の実行が独立試行にならない）という重大な不具合になる。
+   * 実際に使用したシード値は戻り値として返すのみとし、呼び出し側（runSimulation等）が
+   * results.randomSeedUsed に記録して結果画面に表示する。再現したい場合は、表示された値を
+   * ユーザーが手動でシード欄にコピーする運用とする。
+   * 戻り値は実際に使用したシード（32bit整数）。
+   */
+  function resolveAndApplySeed(config) {
+    const hasExplicitSeed = config.randomSeed !== null && config.randomSeed !== undefined &&
+      String(config.randomSeed).trim() !== '';
+    const usedSeed = hasExplicitSeed
+      ? normalizeSeed(config.randomSeed)
+      : normalizeSeed(Math.floor(Math.random() * 4294967296));
+    currentRandomFn = createSeededRandom(usedSeed);
+    return usedSeed;
+  }
+
   /** Box-Muller法で標準正規乱数を生成する */
   function randomNormal() {
     let u = 0.0, v = 0.0;
-    while (u === 0.0) u = Math.random();
-    while (v === 0.0) v = Math.random();
+    while (u === 0.0) u = currentRandomFn();
+    while (v === 0.0) v = currentRandomFn();
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   }
 
@@ -979,7 +1032,7 @@
    */
   function drawNextRegime(currentRegime) {
     const row = REGIME_TRANSITION_MATRIX[currentRegime] || REGIME_TRANSITION_MATRIX.NORMAL;
-    const rnd = Math.random();
+    const rnd = currentRandomFn();
     let cumulative = 0.0;
     for (let i = 0; i < REGIME_NAMES.length; i++) {
       const name = REGIME_NAMES[i];
@@ -1427,6 +1480,18 @@
       { monthIndex: 0, categories: snapshotActiveLifeCostCategories(currentCategoryStates, simStartYearMonthStr) }
     ];
 
+    // ---- 「分岐点分析用サマリーCSV」向けの全試行分・累積指標 ----
+    // 詳細データ(history)を保持しない試行でも、N年目時点の資産推移・レジーム状況を
+    // CSV出力できるようにするため、月次ループの中で軽量な数値だけを積み上げておく。
+    // 初期の高値（peakAssetSoFar）は「開始時点の総資産」＝初期保有銘柄評価額＋初期現金＋
+    // 初期国債バッファ評価額（設定でjgbLotsを直接保持している場合を含む）とする。
+    let peakAssetSoFar = highWaterMark + currentCash + calcJgbTotalValue(jgbLots);
+    let peakMonthIndexSoFar = -1; // -1は「開始時点（0ヶ月目より前）が高値」を意味する
+    let maxDrawdownSoFar = 0.0; // 開始時点からその月までの最大下落率（%）
+    let crisisMonthsCumulative = 0; // 開始からその月までの、暴落モード(CRISIS)だった月数の累計
+    let badRegimeYearsCumulative = 0; // 開始からその月までの、悪性レジームが発生した年の数の累計
+    let currentYearHasBadRegime = false; // 進行中の1年間に悪性レジームの月が1回でもあったか
+
     for (let monthIndex = 0; monthIndex < totalPeriods; monthIndex++) {
       const yearMonthStr = Math.floor(monthIndex / 12) + '年' + ((monthIndex % 12) + 1) + '月';
       jgbCouponThisMonth = 0.0;
@@ -1762,6 +1827,37 @@
       const recInvestmentAssets = fireFailure ? 0.0 : endAssets;
       const recJgbBufferValue = fireFailure ? 0.0 : jgbBufferValueThisMonth;
 
+      // iDeCo口座で保有している銘柄の当月評価額の合計（投資資産の内訳として使う）。
+      // stockDetailsはcurrentStocksと同じ並び順なので、インデックスで対応付ける。
+      let idecoValueRaw = 0.0;
+      currentStocks.forEach((st, i) => {
+        if (isIdecoStock(st)) idecoValueRaw += returnRes.stockDetails[i].value;
+      });
+      const recIdecoValue = fireFailure ? 0.0 : idecoValueRaw;
+
+      // ---- 「分岐点分析用サマリーCSV」向け累積指標の更新 ----
+      // 最大総資産（高値）とその到達月、および高値からの下落率（ドローダウン）の
+      // 「その時点までの最大値」を、月次ループの中で更新しながら積み上げていく。
+      // こうすることで、詳細データを保持しない試行でも任意のN年目時点における
+      // 「N年目までの最大資産・最大ドローダウン」をあとから参照できる。
+      if (recTotalAsset > peakAssetSoFar) {
+        peakAssetSoFar = recTotalAsset;
+        peakMonthIndexSoFar = monthIndex;
+      }
+      const drawdownNowPct = peakAssetSoFar > 0.0 ? ((peakAssetSoFar - recTotalAsset) / peakAssetSoFar) * 100.0 : 0.0;
+      if (drawdownNowPct > maxDrawdownSoFar) maxDrawdownSoFar = drawdownNowPct;
+
+      // CRISIS（暴落モード）滞在月数の累計。破綻後はモードが動かなくなるため、破綻前の月のみ加算する
+      if (!fireFailure && effectiveModeThisMonth === 'CRISIS') crisisMonthsCumulative++;
+      // 悪性レジーム（TIGHTENING／STAGFLATION）が1ヶ月でもあった年をカウントする。
+      // レジームは年初に1回だけ抽選され1年間変わらないが、月次ループで判定する既存の
+      // countBadRegimeYears関数と考え方を揃えるため、ここでも毎月チェックする方式にする。
+      if (currentRegime === 'TIGHTENING' || currentRegime === 'STAGFLATION') currentYearHasBadRegime = true;
+      if ((monthIndex + 1) % 12 === 0) {
+        if (currentYearHasBadRegime) badRegimeYearsCumulative++;
+        currentYearHasBadRegime = false;
+      }
+
       // monthlyLifeCost：この月時点の月次生活費（インフレ／デフレ適用後）。
       // 「月の生活費」テーブル（生活費の分布・破綻件数の集計）で全試行分を参照するために保持する
       // income：この月の収入（給与等＋配当・分配金＋国債バッファ利息）。history（詳細）を
@@ -1773,7 +1869,16 @@
         income: incExp.monthlyIncome + divResult.gain + jgbCouponThisMonth,
         // 破綻回避のための緊急労働による当月の収入額（円）。全試行分・軽量記録として保持し、
         // 「成功・失敗のボーダーライン比較」等で詳細データを保持しない試行でも参照できるようにする
-        emergencyLaborIncome: emergencyLaborIncomeThisMonth
+        emergencyLaborIncome: emergencyLaborIncomeThisMonth,
+        // ---- 以下、「分岐点分析用サマリーCSV」の全試行対応（N年目時点の資産内訳・
+        // 推移指標・レジーム指標）のために追加した軽量フィールド ----
+        jgbBufferValue: recJgbBufferValue,
+        idecoValue: recIdecoValue,
+        peakAssetSoFar,
+        peakMonthIndexSoFar,
+        maxDrawdownSoFar,
+        crisisMonthsCumulative,
+        badRegimeYearsCumulative
       });
 
       if (history) {
@@ -1849,6 +1954,7 @@
     const l = buildCholeskyMatrix(appData);
     const initialRates = buildInitialRates(appData);
     const startMonth = new Date().getMonth(); // 0-11
+    const usedSeed = resolveAndApplySeed(appData.config);
 
     const numTrials = appData.config.times;
     const failureDetailLimit = coerceIn(appData.config.failureDetailLimit, 0, 200);
@@ -1866,6 +1972,8 @@
       results.push(keepDetail ? result : Object.assign({}, result, { history: [] }));
     }
 
+    // 実際に使用した乱数シードをresults配列に添えておく（CSV出力・再現用）
+    results.randomSeedUsed = usedSeed;
     return results;
   }
 
@@ -1899,6 +2007,7 @@
     const l = buildCholeskyMatrix(appData);
     const initialRates = buildInitialRates(appData);
     const startMonth = new Date().getMonth();
+    const usedSeed = resolveAndApplySeed(appData.config);
 
     const numTrials = appData.config.times;
     const failureDetailLimit = coerceIn(appData.config.failureDetailLimit, 0, 200);
@@ -1924,6 +2033,8 @@
       if (t <= numTrials) {
         setTimeout(runNextChunk, 0);
       } else {
+        // 実際に使用した乱数シードをresults配列に添えておく（CSV出力・再現用）
+        results.randomSeedUsed = usedSeed;
         onComplete(results);
       }
     }
@@ -1943,6 +2054,7 @@
     const l = buildCholeskyMatrix(appData);
     const initialRates = buildInitialRates(appData);
     const startMonth = new Date().getMonth();
+    resolveAndApplySeed(appData.config);
 
     const shockFn = (monthIndex) => {
       const sm = shockConfig.shockMonth;
