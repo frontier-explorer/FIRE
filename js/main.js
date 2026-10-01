@@ -110,6 +110,13 @@
     renderTabBar();
     renderCurrentTab();
     wireHeaderButtons();
+    // 各タブに「誰向けの設定？」ボタンと、項目ごとの「？」アイコンを自動で付ける
+    FireUiHelp.attachHelpDecorator(document.getElementById('tab-content'), getCurrentTabId);
+  }
+
+  /** 現在表示中のタブIDを返す（解説アイコンの付与先タブの判定に使う） */
+  function getCurrentTabId() {
+    return currentTabId;
   }
 
   document.addEventListener('DOMContentLoaded', init);
