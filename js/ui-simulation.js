@@ -587,13 +587,20 @@
   function renderCsvExportPanel(results, stocks, simulationPeriodYears, bigExpenseList) {
     const panel = createElement('div', { class: 'panel' }, [
       createElement('h2', { text: 'CSV出力' }),
-      createElement('p', { class: 'desc', text: '月次の詳細データ（銘柄別内訳・為替レート等）をCSVファイルとして書き出します。詳細データは試行#1と、失敗試行の先頭（設定した保存上限件数）のみ保持されています。' })
+      createElement('p', { class: 'desc', text: '月次の詳細データ（銘柄別内訳・為替レート等）をCSVファイルとして書き出します。詳細データは試行#1と、失敗試行の先頭（設定した保存上限件数）、および成功試行のうち最終資産が少ない下位' + FireEngine.LOW_SUCCESS_DETAIL_LIMIT + '件のみ保持されています。' })
     ]);
     const btnFailed = createElement('button', {
       class: 'btn', text: '失敗試行をまとめてCSV出力',
       onclick: () => {
         const r = FireCsv.exportFailedTrials(results, stocks);
         showToast(r.success ? (r.rowCount + '行を出力しました') : r.message, 4000);
+      }
+    });
+    const btnLowSuccess = createElement('button', {
+      class: 'btn', text: '成功ケース（最終資産の下位' + FireEngine.LOW_SUCCESS_DETAIL_LIMIT + '件）をCSV出力',
+      onclick: () => {
+        const r = FireCsv.exportLowSuccessTrials(results, stocks);
+        showToast(r.success ? (r.trialCount + '件・' + r.rowCount + '行を出力しました') : r.message, 4000);
       }
     });
     const btnFirst = createElement('button', {
@@ -603,7 +610,7 @@
         showToast(r.success ? (r.rowCount + '行を出力しました') : r.message, 4000);
       }
     });
-    panel.appendChild(createElement('div', { class: 'row-actions' }, [btnFailed, btnFirst]));
+    panel.appendChild(createElement('div', { class: 'row-actions' }, [btnFailed, btnLowSuccess, btnFirst]));
 
     // 分岐点分析用サマリーCSV（全試行・1試行=1行）。N年目は5年目をデフォルトとし、
     // シミュレーション期間を超えないように上限をsimulationPeriodYearsに合わせる
@@ -878,7 +885,7 @@
       container.appendChild(createElement('p', {
         class: 'desc',
         text: 'この試行はメモリ節約のため、月次の総資産・現金・生活費・収入・銘柄別利率・為替レートの推移のみ保持しています' +
-          '（口座別の内訳・保有口数・出費・税金などの詳細データは試行#1と、失敗試行の一部にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で保持件数を増やせます）。'
+          '（口座別の内訳・保有口数・出費・税金などの詳細データは試行#1と、失敗試行の一部、最終資産が少ない成功試行の下位' + FireEngine.LOW_SUCCESS_DETAIL_LIMIT + '件にのみ保持されます。基本設定タブの「失敗試行の詳細保存上限」で失敗試行の保持件数を増やせます）。'
       }));
       container.appendChild(renderStockAnnualReturnChartPanel(trial));
       container.appendChild(renderLifeCostBreakdownPanel(trial));

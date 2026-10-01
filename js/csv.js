@@ -109,7 +109,9 @@
       let prevFxRates = {};
       result.history.forEach((record, monthIndex) => {
         const lifeCostAmounts = buildLifeCostAmountsForMonth(result, monthIndex, lifeCostNames);
-        lines.push(buildDataRow(result.trialId, result.failureMonth, record, stocks, prevFxRates, lifeCostAmounts));
+        // 破綻月Index: 成功試行には破綻がないため空欄にする（分岐点分析用サマリーCSVと同じ扱い）
+        const failureMonthLabel = result.success ? '' : result.failureMonth;
+        lines.push(buildDataRow(result.trialId, failureMonthLabel, record, stocks, prevFxRates, lifeCostAmounts));
         prevFxRates = record.fxRates;
       });
     });
@@ -149,10 +151,29 @@
     return { success: true, fileName, rowCount };
   }
 
+  /**
+   * 成功ケースのうち最終資産が少ない下位N件（FireEngine.LOW_SUCCESS_DETAIL_LIMIT件）を、
+   * 失敗試行CSVと同じフォーマットでCSVに書き出す（詳細データがある試行のみ対象）。
+   * 並びは最終資産の少ない順（1番目が最終資産が最も少ない成功ケース）。
+   */
+  function exportLowSuccessTrials(results, stocks) {
+    const lowSuccessWithDetail = results
+      .filter((r) => r.success && r.lowSuccessDetail && r.history.length > 0)
+      .sort((a, b) => global.FireEngine.getFinalTotalAsset(a) - global.FireEngine.getFinalTotalAsset(b));
+    if (lowSuccessWithDetail.length === 0) {
+      return { success: false, message: '出力対象の成功試行（最終資産の下位・詳細データあり）がありません。\n成功した試行がなかった可能性があります。' };
+    }
+    const fileName = 'FIRE_成功下位試行_' + formatTimestamp(new Date()) + '.csv';
+    const csvContent = buildCsvContent(lowSuccessWithDetail, stocks);
+    downloadCsv(fileName, csvContent);
+    const rowCount = lowSuccessWithDetail.reduce((s, r) => s + r.history.length, 0);
+    return { success: true, fileName, rowCount, trialCount: lowSuccessWithDetail.length };
+  }
+
   /** 指定した1試行の月次データを全てCSVに書き出す（通常は試行#1を使う） */
   function exportSingleTrial(result, stocks) {
     if (result.history.length === 0) {
-      return { success: false, message: 'この試行（#' + result.trialId + '）には月次詳細データがありません。\n詳細データは試行#1、または失敗試行の一部にのみ保持されます。' };
+      return { success: false, message: 'この試行（#' + result.trialId + '）には月次詳細データがありません。\n詳細データは試行#1、失敗試行の一部、最終資産の下位の成功試行にのみ保持されます。' };
     }
     const statusLabel = result.success ? '成功' : '失敗';
     const fileName = 'FIRE_試行' + result.trialId + '_' + statusLabel + '_' + formatTimestamp(new Date()) + '.csv';
@@ -207,9 +228,25 @@
     });
     // ---- E. 再現性のための情報 ----
     const seedColumns = ['乱数シード'];
+    // ---- F. 月次詳細CSVとの突合用 ----
+    const detailColumns = ['月次詳細の収録区分'];
 
-    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns, bigExpenseColumns, seedColumns)
+    return fixedColumns.concat(stockColumns, fxColumns, lifeCostColumns, bigExpenseColumns, seedColumns, detailColumns)
       .map(escapeCsvField).join(',');
+  }
+
+  /**
+   * その試行の月次詳細が、どのCSVに収録されているかを示すラベルを返す
+   * （分岐点分析用サマリーCSVと、失敗試行CSV／成功下位試行CSVを試行番号で突合しやすくするため）。
+   *   '失敗試行CSV' : 失敗試行で月次詳細あり（失敗試行CSVに収録）
+   *   '成功下位CSV' : 最終資産が下位の成功試行で月次詳細あり（成功下位試行CSVに収録）
+   *   'なし'        : 月次詳細なし（または試行#1のみ保持など、上記2つのCSVには収録されない）
+   */
+  function getDetailCategoryLabel(result) {
+    const hasDetail = result.history && result.history.length > 0;
+    if (!hasDetail) return 'なし';
+    if (!result.success) return '失敗試行CSV';
+    return result.lowSuccessDetail ? '成功下位CSV' : 'なし';
   }
 
   /** 「分岐点分析用サマリーCSV」の1試行分のデータ行を生成する */
@@ -281,8 +318,9 @@
       );
     });
     const seedValues = [randomSeedUsed !== undefined && randomSeedUsed !== null ? randomSeedUsed : ''];
+    const detailValues = [getDetailCategoryLabel(result)];
 
-    return fixedValues.concat(stockValues, fxValues, lifeCostValues, bigExpenseValues, seedValues)
+    return fixedValues.concat(stockValues, fxValues, lifeCostValues, bigExpenseValues, seedValues, detailValues)
       .map(escapeCsvField).join(',');
   }
 
@@ -331,5 +369,5 @@
     return { success: true, fileName, rowCount: results.length };
   }
 
-  global.FireCsv = { exportFailedTrials, exportSingleTrial, exportBreakpointAnalysis, buildCsvContent };
+  global.FireCsv = { exportFailedTrials, exportLowSuccessTrials, exportSingleTrial, exportBreakpointAnalysis, buildCsvContent };
 })(typeof window !== 'undefined' ? window : globalThis);

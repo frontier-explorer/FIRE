@@ -1938,6 +1938,67 @@
   }
 
   // =====================================================
+  // 成功ケース（最終資産の下位N件）の月次詳細保持
+  // =====================================================
+
+  /** 月次詳細を保持する「成功ケース（最終資産の下位）」の件数 */
+  const LOW_SUCCESS_DETAIL_LIMIT = 50;
+
+  /** 1試行の最終総資産（円）を返す。軽量記録がなければ0 */
+  function getFinalTotalAsset(result) {
+    const last = result.lightHistory[result.lightHistory.length - 1];
+    return last ? last.totalAsset : 0.0;
+  }
+
+  /**
+   * 「最終資産が少ない成功ケース」を管理する入れ物を作る。
+   * 全試行が終わるまで下位N件は確定しないため、試行のたびに候補として登録し、
+   * N件を超えたら最終資産が最も多い1件を外す方式（上位N件選抜の逆＝下位N件選抜）で、
+   * 保持する詳細データの件数を常にN件以内に抑える（メモリ節約）。
+   */
+  function createLowSuccessKeeper(limit) {
+    return { limit: limit, kept: [] };
+  }
+
+  /**
+   * 成功した試行を下位N件の候補として登録する。
+   * @return {boolean} この試行が下位N件に入った（＝月次詳細を保持すべき）場合true
+   *   外れた側の試行は、履歴を空にしてメモリを解放する（試行#1のみ別ルールで保持するため除く）。
+   *   下位N件に入った試行には result.lowSuccessDetail = true を付ける（CSV出力の対象判定用）。
+   */
+  function offerLowSuccessCandidate(keeper, result) {
+    if (!result.success || keeper.limit <= 0) return false;
+    const asset = getFinalTotalAsset(result);
+
+    // まだ枠に空きがあれば無条件で登録
+    if (keeper.kept.length < keeper.limit) {
+      keeper.kept.push({ result: result, asset: asset });
+      result.lowSuccessDetail = true;
+      return true;
+    }
+
+    // 枠が埋まっている場合、保持中で最も最終資産が多い試行（同額なら試行番号が大きい方）を探す
+    let worstIndex = 0;
+    for (let i = 1; i < keeper.kept.length; i++) {
+      const cur = keeper.kept[i];
+      const worst = keeper.kept[worstIndex];
+      if (cur.asset > worst.asset || (cur.asset === worst.asset && cur.result.trialId > worst.result.trialId)) {
+        worstIndex = i;
+      }
+    }
+    const worst = keeper.kept[worstIndex];
+    // 新しい試行の方が最終資産が多い（または同額）なら下位N件には入らない
+    if (asset >= worst.asset) return false;
+
+    // 最終資産が最も多い1件を外し、新しい試行と入れ替える
+    worst.result.lowSuccessDetail = false;
+    if (worst.result.trialId !== 1) worst.result.history = [];
+    keeper.kept[worstIndex] = { result: result, asset: asset };
+    result.lowSuccessDetail = true;
+    return true;
+  }
+
+  // =====================================================
   // メインシミュレーション実行
   // =====================================================
 
@@ -1960,13 +2021,16 @@
     const failureDetailLimit = coerceIn(appData.config.failureDetailLimit, 0, 200);
 
     let failureDetailCount = 0;
+    const lowSuccessKeeper = createLowSuccessKeeper(LOW_SUCCESS_DETAIL_LIMIT);
     const results = [];
 
     for (let t = 1; t <= numTrials; t++) {
       onProgress(t, numTrials);
       const result = runOneTrial(t, appData, l, initialRates, startMonth, true, null);
 
-      const keepDetail = t === 1 || (!result.success && failureDetailCount < failureDetailLimit);
+      // 成功ケースは最終資産の下位N件の候補として登録する（下位に入れば詳細を保持）
+      const isLowSuccess = offerLowSuccessCandidate(lowSuccessKeeper, result);
+      const keepDetail = t === 1 || isLowSuccess || (!result.success && failureDetailCount < failureDetailLimit);
       if (!result.success && failureDetailCount < failureDetailLimit) failureDetailCount++;
 
       results.push(keepDetail ? result : Object.assign({}, result, { history: [] }));
@@ -2014,6 +2078,7 @@
     const effectiveChunkSize = chunkSize || Math.max(1, Math.ceil(numTrials / 100));
 
     let failureDetailCount = 0;
+    const lowSuccessKeeper = createLowSuccessKeeper(LOW_SUCCESS_DETAIL_LIMIT);
     const results = [];
     let t = 1;
 
@@ -2023,7 +2088,9 @@
       for (; t <= chunkEndTrial; t++) {
         const result = runOneTrial(t, appData, l, initialRates, startMonth, true, null);
 
-        const keepDetail = t === 1 || (!result.success && failureDetailCount < failureDetailLimit);
+        // 成功ケースは最終資産の下位N件の候補として登録する（下位に入れば詳細を保持）
+        const isLowSuccess = offerLowSuccessCandidate(lowSuccessKeeper, result);
+        const keepDetail = t === 1 || isLowSuccess || (!result.success && failureDetailCount < failureDetailLimit);
         if (!result.success && failureDetailCount < failureDetailLimit) failureDetailCount++;
 
         results.push(keepDetail ? result : Object.assign({}, result, { history: [] }));
@@ -2308,6 +2375,7 @@
   global.FireEngine = {
     runSimulation, runSimulationChunked, runSimulationWithShock, calculateSummary, calculatePercentileTimeline,
     calculateLifeCostTable, filterOutLongTermNegativeReturnAnomalies,
+    getFinalTotalAsset, LOW_SUCCESS_DETAIL_LIMIT,
     percentile, calculateTaxRate, yearMonthToTotalMonths,
     // 毎月データテーブルの「年齢」列表示用に、UI側（ui-simulation.js）からも呼び出す
     calculateAgeAtYearMonth,
